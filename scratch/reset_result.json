@@ -1,0 +1,66 @@
+{
+  "backupPath": "E:\\Ravi 2.0\\AI\\Meaven-Founder-Cockpit\\data\\backups\\cockpit-pre-pilot-2026-09-21T17-54-01-914Z.db",
+  "allTables": [
+    "companies",
+    "relationships",
+    "contacts",
+    "opportunities",
+    "interactions",
+    "research_candidates",
+    "research_notes",
+    "intelligence_notes",
+    "project_links",
+    "settings",
+    "candidate_notes",
+    "research_setup",
+    "research_jobs"
+  ],
+  "tablesToClear": [
+    "companies",
+    "relationships",
+    "contacts",
+    "opportunities",
+    "interactions",
+    "research_candidates",
+    "research_notes",
+    "intelligence_notes",
+    "project_links",
+    "candidate_notes",
+    "research_setup",
+    "research_jobs"
+  ],
+  "preservedTables": [
+    "settings"
+  ],
+  "countsBefore": {
+    "companies": 3,
+    "relationships": 3,
+    "contacts": 2,
+    "opportunities": 1,
+    "interactions": 1,
+    "research_candidates": 1,
+    "research_notes": 0,
+    "intelligence_notes": 0,
+    "project_links": 0,
+    "settings": 6,
+    "candidate_notes": 0,
+    "research_setup": 0,
+    "research_jobs": 0
+  },
+  "countsAfter": {
+    "companies": 0,
+    "relationships": 0,
+    "contacts": 0,
+    "opportunities": 0,
+    "interactions": 0,
+    "research_candidates": 0,
+    "research_notes": 0,
+    "intelligence_notes": 0,
+    "project_links": 0,
+    "settings": 6,
+    "candidate_notes": 0,
+    "research_setup": 0,
+    "research_jobs": 0
+  },
+  "cleanStateVerified": true
+}

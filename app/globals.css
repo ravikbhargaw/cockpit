@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-meaven-blue: #36668d;
+  --color-bg-dark: #080b11;
+  --color-surface: #0e131f;
+  --color-card: #121929;
+  --color-border: #1c263b;
+}
+
+body {
+  background-color: var(--color-bg-dark);
+  color: #f1f5f9;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom dark scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #080b11;
+}
+::-webkit-scrollbar-thumb {
+  background: #1c263b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #36668d;
+}
+
+/* Glass panel background */
+.cockpit-panel {
+  background-color: #0e131f;
+  border: 1px solid #1c263b;
+  border-radius: 0.75rem;
+}
+
+.cockpit-card {
+  background-color: #121929;
+  border: 1px solid #1c263b;
+  border-radius: 0.75rem;
+  transition: all 0.2s ease-in-out;
+}
+
+.cockpit-card:hover {
+  border-color: rgba(54, 102, 141, 0.45);
+  box-shadow: 0 4px 20px -2px rgba(54, 102, 141, 0.15);
+}
+
+/* Accent badges */
+.badge-meaven {
+  background-color: rgba(54, 102, 141, 0.15);
+  color: #6da2cb;
+  border: 1px solid rgba(54, 102, 141, 0.35);
+}
