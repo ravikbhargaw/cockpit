@@ -1,6 +1,3 @@
-import path from 'path';
-import fs from 'fs';
-
 let dbInstance: any = null;
 
 function getDB() {
@@ -8,14 +5,9 @@ function getDB() {
 
   const connectionString = process.env.DATABASE_URL || '';
   if (connectionString.startsWith('postgres://') || connectionString.startsWith('postgresql://')) {
-    // PostgreSQL / Neon database compatibility adapter
+    // PostgreSQL / Neon database compatibility adapter (pure Edge Runtime compatible)
     try {
-      let Pool;
-      try {
-        Pool = require('@neondatabase/serverless').Pool;
-      } catch {
-        Pool = require('pg').Pool;
-      }
+      const { Pool } = require('@neondatabase/serverless');
       const pool = new Pool({
         connectionString,
         ssl: { rejectUnauthorized: false },
@@ -72,7 +64,10 @@ function getDB() {
 
   // Local SQLite fallback with lazy requirement (prevents C++ SIGSEGV native binary crash in CI containers)
   try {
-    const Database = require('better-sqlite3');
+    const req = eval('require');
+    const path = req('path');
+    const fs = req('fs');
+    const Database = req('better-sqlite3');
     const dbPath = path.join(process.cwd(), 'data', 'cockpit.db');
     const dataDir = path.dirname(dbPath);
     if (!fs.existsSync(dataDir)) {
