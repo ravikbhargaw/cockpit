@@ -20,7 +20,7 @@
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
-    "@cloudflare/next-on-pages": "^1.13.7",
+    "@cloudflare/next-on-pages": "1.13.7",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^20.17.0",
     "@types/pg": "^8.23.1",
