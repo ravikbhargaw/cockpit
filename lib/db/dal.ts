@@ -1,3 +1,13 @@
+
+function parseJsonField(val: any): any {
+  if (val === null || val === undefined) return [];
+  if (typeof val === 'object') return val;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return []; }
+  }
+  return [];
+}
+
 import { db } from '../db';
 import { formatINR, normalizeDomain } from '@/lib/utils';
 import { VerificationStatus, PartnerOpportunitySignal } from '@/types';
@@ -89,7 +99,7 @@ export const DAL = {
         nextActionDate: relationship.next_action_date,
         partnerSince: relationship.partner_since,
         relationshipNotes: relationship.relationship_notes,
-        servicesDiscussed: relationship.services_discussed ? JSON.parse(relationship.services_discussed) : [],
+        servicesDiscussed: relationship.services_discussed ? parseJsonField(relationship.services_discussed) : [],
       } : null,
       contacts: contacts.map(c => ({
         id: c.id,
@@ -128,9 +138,9 @@ export const DAL = {
         id: research.id,
         companyId: research.company_id,
         marketSegment: research.market_segment,
-        strengths: JSON.parse(research.strengths || '[]'),
-        growthSignals: JSON.parse(research.growth_signals || '[]'),
-        sources: JSON.parse(research.sources || '[]'),
+        strengths: parseJsonField(research.strengths),
+        growthSignals: parseJsonField(research.growth_signals),
+        sources: parseJsonField(research.sources),
       } : null,
       candidateResearch: candidateData,
       intelligence: intelligence ? {
@@ -260,16 +270,16 @@ export const DAL = {
   },
 
   async getResearchQueueMetrics() {
-    const total = db.prepare('SELECT COUNT(*) as count FROM research_candidates').get() as { count: number };
-    const ready = db.prepare("SELECT COUNT(*) as count FROM research_candidates WHERE research_status = 'READY_FOR_REVIEW'").get() as { count: number };
-    const highPrio = db.prepare("SELECT COUNT(*) as count FROM research_candidates WHERE priority = 'HIGH'").get() as { count: number };
-    const approved = db.prepare("SELECT COUNT(*) as count FROM research_candidates WHERE research_status = 'APPROVED'").get() as { count: number };
+    const total = (await db.prepare('SELECT COUNT(*) as count FROM research_candidates').get()) as { count: number };
+    const ready = (await db.prepare("SELECT COUNT(*) as count FROM research_candidates WHERE research_status = 'READY_FOR_REVIEW'").get()) as { count: number };
+    const highPrio = (await db.prepare("SELECT COUNT(*) as count FROM research_candidates WHERE priority = 'HIGH'").get()) as { count: number };
+    const approved = (await db.prepare("SELECT COUNT(*) as count FROM research_candidates WHERE research_status = 'APPROVED'").get()) as { count: number };
 
     return {
-      totalCandidates: total.count,
-      readyForReview: ready.count,
-      highPriority: highPrio.count,
-      approved: approved.count,
+      totalCandidates: total?.count || 0,
+      readyForReview: ready?.count || 0,
+      highPriority: highPrio?.count || 0,
+      approved: approved?.count || 0,
     };
   },
 
@@ -277,24 +287,24 @@ export const DAL = {
     if (!row) return null;
     let businessSignals: any = {};
     try {
-      if (row.business_signals) businessSignals = JSON.parse(row.business_signals);
+      if (row.business_signals) businessSignals = parseJsonField(row.business_signals);
     } catch (e) {}
 
     let evidenceList: any[] = [];
     if (row.evidence_json) {
       try {
-        evidenceList = JSON.parse(row.evidence_json);
+        evidenceList = parseJsonField(row.evidence_json);
       } catch (e) {}
     }
 
     let partnerModelSignals: string[] = [];
     try {
-      if (row.partner_model_signals) partnerModelSignals = JSON.parse(row.partner_model_signals);
+      if (row.partner_model_signals) partnerModelSignals = parseJsonField(row.partner_model_signals);
     } catch (e) {}
 
     let founderInvestigationFlags: string[] = [];
     try {
-      if (row.founder_investigation_flags) founderInvestigationFlags = JSON.parse(row.founder_investigation_flags);
+      if (row.founder_investigation_flags) founderInvestigationFlags = parseJsonField(row.founder_investigation_flags);
     } catch (e) {}
 
     const companyName = row.name || row.company_name || 'Untitled Candidate';
@@ -459,7 +469,7 @@ export const DAL = {
     if (!row) return null;
     let parsedCriteria = {};
     try {
-      if (row.parsed_criteria) parsedCriteria = JSON.parse(row.parsed_criteria);
+      if (row.parsed_criteria) parsedCriteria = parseJsonField(row.parsed_criteria);
     } catch (e) {}
 
     return {

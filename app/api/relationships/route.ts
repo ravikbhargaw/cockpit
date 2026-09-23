@@ -1,3 +1,13 @@
+
+function parseJsonField(val: any): any {
+  if (val === null || val === undefined) return [];
+  if (typeof val === 'object') return val;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return []; }
+  }
+  return [];
+}
+
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
@@ -31,7 +41,7 @@ export async function GET(request: Request) {
       nextActionDate: r.next_action_date,
       partnerSince: r.partner_since || undefined,
       relationshipNotes: r.relationship_notes,
-      servicesDiscussed: r.services_discussed ? JSON.parse(r.services_discussed) : [],
+      servicesDiscussed: r.services_discussed ? parseJsonField(r.services_discussed) : [],
     }));
 
     return NextResponse.json(relationships);
