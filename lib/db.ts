@@ -1,11 +1,9 @@
 let dbInstance: any = null;
 
 function getDB() {
-  if (dbInstance) return dbInstance;
-
   const connectionString = process.env.DATABASE_URL || '';
   if (connectionString.startsWith('postgres://') || connectionString.startsWith('postgresql://')) {
-    // PostgreSQL / Neon database compatibility adapter (pure Edge Runtime compatible)
+    if (dbInstance && dbInstance._isPg) return dbInstance;
     try {
       const { Pool } = require('@neondatabase/serverless');
       const pool = new Pool({
@@ -13,10 +11,9 @@ function getDB() {
         ssl: { rejectUnauthorized: false },
       });
 
-      // Synchronous interface wrapper matching DAL expectations
       dbInstance = {
+        _isPg: true,
         prepare(sql: string) {
-          // Convert SQLite ? placeholders to Postgres $1, $2 if needed
           let pgSql = sql;
           let paramIdx = 1;
           pgSql = pgSql.replace(/\?/g, () => `$${paramIdx++}`);
@@ -59,12 +56,14 @@ function getDB() {
         pragma(sql: string) {},
       };
       return dbInstance;
-    } catch {
-      // Fallback if pg package is absent during static build
+    } catch (err) {
+      console.error('Error instantiating Neon pool:', err);
     }
   }
 
-  // Local SQLite fallback with lazy requirement (prevents C++ SIGSEGV native binary crash in CI containers)
+  if (dbInstance && dbInstance._isSqlite) return dbInstance;
+
+  // Local SQLite fallback with lazy requirement
   try {
     const req = eval('require');
     const path = req('path');
@@ -78,22 +77,22 @@ function getDB() {
     const sqliteDb = new Database(dbPath);
     sqliteDb.pragma('journal_mode = WAL');
     sqliteDb.pragma('foreign_keys = ON');
+    sqliteDb._isSqlite = true;
     dbInstance = sqliteDb;
     return sqliteDb;
   } catch (err) {
-    // Safe build-time dummy driver when C++ native addons are unavailable
-    dbInstance = {
+    // Safe build-time dummy driver (not memoized to allow runtime process.env.DATABASE_URL pickup)
+    return {
       prepare(sql: string) {
         return {
-          all: () => [],
-          get: () => null,
-          run: () => ({ changes: 0 }),
+          all: async () => [],
+          get: async () => null,
+          run: async () => ({ changes: 0 }),
         };
       },
       exec: () => {},
       pragma: () => {},
     };
-    return dbInstance;
   }
 }
 
