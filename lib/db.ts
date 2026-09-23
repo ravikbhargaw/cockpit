@@ -10,7 +10,12 @@ function getDB() {
   if (connectionString.startsWith('postgres://') || connectionString.startsWith('postgresql://')) {
     // PostgreSQL / Neon database compatibility adapter
     try {
-      const { Pool } = require('pg');
+      let Pool;
+      try {
+        Pool = require('@neondatabase/serverless').Pool;
+      } catch {
+        Pool = require('pg').Pool;
+      }
       const pool = new Pool({
         connectionString,
         ssl: { rejectUnauthorized: false },
