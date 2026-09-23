@@ -117,7 +117,7 @@ export async function GET() {
     }
 
     // Relationship Attention Items
-    const attentionRels = db.prepare(`
+    const attentionRels = await db.prepare(`
       SELECT r.*, c.name as company_name, c.type as company_type
       FROM relationships r
       JOIN companies c ON r.company_id = c.id

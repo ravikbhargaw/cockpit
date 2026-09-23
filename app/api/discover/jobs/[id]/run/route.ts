@@ -13,7 +13,7 @@ export async function POST(
 ) {
   try {
     const jobId = params.id;
-    const job = DAL.getResearchJobById(jobId);
+    const job = await DAL.getResearchJobById(jobId);
 
     if (!job) {
       return NextResponse.json(
@@ -27,7 +27,7 @@ export async function POST(
     let totalSearchCalls = 0;
 
     // 1. Stage: DISCOVERING
-    DAL.updateResearchJobStatus(jobId, 'DISCOVERING', 'Searching public web & industry registries for candidates...');
+    await DAL.updateResearchJobStatus(jobId, 'DISCOVERING', 'Searching public web & industry registries for candidates...');
 
     const criteria: ParsedCriteria = job.parsedCriteria || {};
     const discoveryRes = await discoverCandidates(criteria, job.originalInstruction);
@@ -39,22 +39,22 @@ export async function POST(
     let costCheck = calculateEstimatedCost(totalPromptTokens, totalCompletionTokens, totalSearchCalls, job.modelName, job.budgetLimit);
 
     if (costCheck.isBudgetExceeded) {
-      DAL.updateResearchJobMetrics(jobId, {
+      await DAL.updateResearchJobMetrics(jobId, {
         status: 'READY_FOR_REVIEW',
         statusMessage: `Safety budget ceiling reached (₹${costCheck.costINR}). Discovery completed.`,
         estimatedCost: costCheck.costINR,
         searchCallCount: totalSearchCalls,
       });
-      return NextResponse.json({ success: true, job: DAL.getResearchJobById(jobId), candidates: [] });
+      return NextResponse.json({ success: true, job: await DAL.getResearchJobById(jobId), candidates: [] });
     }
 
     const rawCandidates = discoveryRes.candidates || [];
 
     // 2. Stage: FILTERING (Deduplicate against existing DB companies & candidates)
-    DAL.updateResearchJobStatus(jobId, 'FILTERING', `Deduplicating ${rawCandidates.length} discovered candidates against database...`);
+    await DAL.updateResearchJobStatus(jobId, 'FILTERING', `Deduplicating ${rawCandidates.length} discovered candidates against database...`);
 
-    const existingCompanies = DAL.getCompanies();
-    const existingCandidates = DAL.getResearchCandidates();
+    const existingCompanies = await DAL.getCompanies();
+    const existingCandidates = await DAL.getResearchCandidates();
 
     const existingDomains = new Set<string>();
     const existingNames = new Set<string>();
@@ -80,7 +80,7 @@ export async function POST(
     });
 
     // 3. Stage: QUALIFYING
-    DAL.updateResearchJobStatus(jobId, 'QUALIFYING', `Qualifying ${filteredCandidates.length} fresh candidates...`);
+    await DAL.updateResearchJobStatus(jobId, 'QUALIFYING', `Qualifying ${filteredCandidates.length} fresh candidates...`);
 
     const qualifiedList: any[] = [];
 
@@ -130,7 +130,7 @@ export async function POST(
     // 4. Save candidates into DB
     const savedCandidates: any[] = [];
     for (const candData of qualifiedList) {
-      const created = DAL.createResearchCandidate(candData);
+      const created = await DAL.createResearchCandidate(candData);
       savedCandidates.push(created);
     }
 
@@ -138,7 +138,7 @@ export async function POST(
     const finalCost = calculateEstimatedCost(totalPromptTokens, totalCompletionTokens, totalSearchCalls, job.modelName, job.budgetLimit);
     const qualifiedCount = savedCandidates.filter(c => (c.fitScore || 0) >= (criteria.minFitScore || 70)).length;
 
-    DAL.updateResearchJobMetrics(jobId, {
+    await DAL.updateResearchJobMetrics(jobId, {
       candidateCount: rawCandidates.length,
       qualifiedCount: qualifiedList.length,
       finalShortlistCount: qualifiedCount,
@@ -148,7 +148,7 @@ export async function POST(
       statusMessage: `Research complete! Incurred ${finalCost.formattedINR} (${qualifiedCount} qualified candidates ready for review).`,
     });
 
-    const updatedJob = DAL.getResearchJobById(jobId);
+    const updatedJob = await DAL.getResearchJobById(jobId);
 
     return NextResponse.json({
       success: true,
@@ -156,7 +156,7 @@ export async function POST(
       candidates: savedCandidates,
     });
   } catch (error: any) {
-    DAL.updateResearchJobStatus(params.id, 'FAILED', `Job execution error: ${error.message}`);
+    await DAL.updateResearchJobStatus(params.id, 'FAILED', `Job execution error: ${error.message}`);
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to execute research job' },
       { status: 500 }

@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     }
 
     query += ` ORDER BY is_decision_maker DESC, created_at DESC`;
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = await db.prepare(query).all(...params) as any[];
 
     const contacts = rows.map((c) => ({
       id: c.id,
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Company ID and contact name are required' }, { status: 400 });
     }
 
-    const updatedAccount = DAL.createContact(body);
+    const updatedAccount = await DAL.createContact(body);
     return NextResponse.json(updatedAccount);
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to create contact' }, { status: 500 });
@@ -60,7 +60,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Contact ID is required' }, { status: 400 });
     }
 
-    const updatedAccount = DAL.updateContact(id, body);
+    const updatedAccount = await DAL.updateContact(id, body);
     return NextResponse.json(updatedAccount);
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to update contact' }, { status: 500 });
@@ -76,7 +76,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Contact ID is required' }, { status: 400 });
     }
 
-    const updatedAccount = DAL.archiveContact(id);
+    const updatedAccount = await DAL.archiveContact(id);
     return NextResponse.json(updatedAccount);
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to archive contact' }, { status: 500 });

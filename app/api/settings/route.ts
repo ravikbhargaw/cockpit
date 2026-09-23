@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 
 export async function GET() {
   try {
-    const rows = db.prepare('SELECT * FROM settings').all() as any[];
+    const rows = await db.prepare('SELECT * FROM settings').all() as any[];
 
     const settingsObj: Record<string, any> = {};
     for (const r of rows) {

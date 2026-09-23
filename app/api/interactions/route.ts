@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     }
 
     query += ` ORDER BY i.date DESC, i.created_at DESC`;
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = await db.prepare(query).all(...params) as any[];
 
     const interactions = rows.map((i) => ({
       id: i.id,
@@ -124,7 +124,7 @@ export async function POST(request: Request) {
     );
 
     // Update Relationship state on Company
-    db.prepare(`
+    await db.prepare(`
       UPDATE relationships
       SET last_meaningful_interaction_date = ?,
           next_action = ?,

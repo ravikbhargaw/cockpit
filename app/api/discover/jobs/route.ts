@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const jobs = DAL.getResearchJobs();
+    const jobs = await DAL.getResearchJobs();
     return NextResponse.json({ success: true, jobs });
   } catch (error: any) {
     return NextResponse.json(
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       0
     );
 
-    const job = DAL.createResearchJob(
+    const job = await DAL.createResearchJob(
       cleanInst,
       planResult.criteria,
       process.env.RESEARCH_AI_MODEL || 'gpt-5.6-luna',
@@ -50,13 +50,13 @@ export async function POST(req: NextRequest) {
       throw new Error('Failed to create research job');
     }
 
-    DAL.updateResearchJobMetrics(job.id, {
+    await DAL.updateResearchJobMetrics(job.id, {
       estimatedCost: initialCost.costINR,
       status: 'PLANNING',
       statusMessage: 'Research criteria planned successfully. Ready to run discovery.',
     });
 
-    const updatedJob = DAL.getResearchJobById(job.id);
+    const updatedJob = await DAL.getResearchJobById(job.id);
 
     return NextResponse.json({
       success: true,

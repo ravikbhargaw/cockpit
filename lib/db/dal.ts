@@ -4,7 +4,7 @@ import { VerificationStatus, PartnerOpportunitySignal } from '@/types';
 
 export const DAL = {
   // Companies
-  getCompanies(status?: string, search?: string) {
+  async getCompanies(status?: string, search?: string) {
     let query = `
       SELECT c.*, r.status as relationship_status, r.temperature as relationship_temperature
       FROM companies c
@@ -24,7 +24,7 @@ export const DAL = {
     }
 
     query += ` ORDER BY c.created_at DESC`;
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = await db.prepare(query).all(...params) as any[];
 
     return rows.map((c) => ({
       id: c.id,
@@ -45,23 +45,23 @@ export const DAL = {
     }));
   },
 
-  getCompanyById(id: string) {
-    const company = db.prepare('SELECT * FROM companies WHERE id = ? AND is_archived = 0').get(id) as any;
+  async getCompanyById(id: string) {
+    const company = await db.prepare('SELECT * FROM companies WHERE id = ? AND is_archived = 0').get(id) as any;
     if (!company) return null;
 
-    const relationship = db.prepare('SELECT * FROM relationships WHERE company_id = ?').get(id) as any;
+    const relationship = await db.prepare('SELECT * FROM relationships WHERE company_id = ?').get(id) as any;
     const contacts = db.prepare('SELECT * FROM contacts WHERE company_id = ? AND (is_archived IS NULL OR is_archived = 0) ORDER BY is_decision_maker DESC, created_at ASC').all(id) as any[];
     const opportunities = db.prepare('SELECT * FROM opportunities WHERE company_id = ? AND (is_archived IS NULL OR is_archived = 0) ORDER BY created_at DESC').all(id) as any[];
-    const interactions = db.prepare('SELECT * FROM interactions WHERE company_id = ? ORDER BY date DESC').all(id) as any[];
-    const research = db.prepare('SELECT * FROM research_notes WHERE company_id = ?').get(id) as any;
-    const intelligence = db.prepare('SELECT * FROM intelligence_notes WHERE company_id = ?').get(id) as any;
-    const projectLinks = db.prepare('SELECT * FROM project_links WHERE company_id = ?').all(id) as any[];
+    const interactions = await db.prepare('SELECT * FROM interactions WHERE company_id = ? ORDER BY date DESC').all(id) as any[];
+    const research = await db.prepare('SELECT * FROM research_notes WHERE company_id = ?').get(id) as any;
+    const intelligence = await db.prepare('SELECT * FROM intelligence_notes WHERE company_id = ?').get(id) as any;
+    const projectLinks = await db.prepare('SELECT * FROM project_links WHERE company_id = ?').all(id) as any[];
 
     // Fetch linked research candidate data if available
     const candidateRow = db.prepare("SELECT * FROM research_candidates WHERE created_company_id = ? OR (domain IS NOT NULL AND domain != '' AND domain = ?)").get(id, company.domain || '') as any;
     let candidateData = null;
     if (candidateRow) {
-      candidateData = DAL.getCandidateById(candidateRow.id);
+      candidateData = await DAL.getCandidateById(candidateRow.id);
     }
 
     return {
@@ -153,7 +153,7 @@ export const DAL = {
   },
 
   // Opportunities
-  getOpportunities(companyId?: string) {
+  async getOpportunities(companyId?: string) {
     let query = `
       SELECT o.*, c.name as company_name
       FROM opportunities o
@@ -168,7 +168,7 @@ export const DAL = {
     }
 
     query += ` ORDER BY o.created_at DESC`;
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = await db.prepare(query).all(...params) as any[];
 
     return rows.map((o) => {
       const numericAmount = o.estimated_value_amount || 0;
@@ -189,8 +189,8 @@ export const DAL = {
 
   // --- SPRINT 4: RESEARCH WORKBENCH DAL METHODS ---
 
-  getResearchSetup() {
-    const row = db.prepare('SELECT * FROM research_setup LIMIT 1').get() as any;
+  async getResearchSetup() {
+    const row = await db.prepare('SELECT * FROM research_setup LIMIT 1').get() as any;
     if (!row) {
       return {
         targetCompanyType: 'Boutique Interior Design Firm',
@@ -217,11 +217,11 @@ export const DAL = {
     };
   },
 
-  saveResearchSetup(data: any) {
-    const existing = db.prepare('SELECT id FROM research_setup LIMIT 1').get() as any;
+  async saveResearchSetup(data: any) {
+    const existing = await db.prepare('SELECT id FROM research_setup LIMIT 1').get() as any;
     const now = new Date().toISOString();
     if (existing) {
-      db.prepare(`
+      await db.prepare(`
         UPDATE research_setup SET
           target_company_type = ?, geography = ?, industry = ?, company_size = ?,
           services = ?, keywords = ?, website = ?, notes = ?, updated_at = ?
@@ -259,7 +259,7 @@ export const DAL = {
     return this.getResearchSetup();
   },
 
-  getResearchQueueMetrics() {
+  async getResearchQueueMetrics() {
     const total = db.prepare('SELECT COUNT(*) as count FROM research_candidates').get() as { count: number };
     const ready = db.prepare("SELECT COUNT(*) as count FROM research_candidates WHERE research_status = 'READY_FOR_REVIEW'").get() as { count: number };
     const highPrio = db.prepare("SELECT COUNT(*) as count FROM research_candidates WHERE priority = 'HIGH'").get() as { count: number };
@@ -273,7 +273,7 @@ export const DAL = {
     };
   },
 
-  mapCandidateRow(row: any, isListOnly: boolean = false): any {
+  mapCandidateRow(row: any, isListOnly: boolean = false): any  {
     if (!row) return null;
     let businessSignals: any = {};
     try {
@@ -427,7 +427,7 @@ export const DAL = {
 
   // --- SPRINT 5: AI RESEARCH JOB DAL METHODS ---
 
-  createResearchJob(instruction: string, criteria: any, modelName?: string, budgetLimit: number = 150) {
+  async createResearchJob(instruction: string, criteria: any, modelName?: string, budgetLimit: number = 150) {
     const id = `job-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const now = new Date().toISOString();
     const criteriaJson = typeof criteria === 'string' ? criteria : JSON.stringify(criteria || {});
@@ -444,18 +444,18 @@ export const DAL = {
     return DAL.getResearchJobById(id);
   },
 
-  getResearchJobs() {
-    const rows = db.prepare('SELECT * FROM research_jobs ORDER BY created_at DESC').all() as any[];
+  async getResearchJobs() {
+    const rows = await db.prepare('SELECT * FROM research_jobs ORDER BY created_at DESC').all() as any[];
     return rows.map(r => DAL.mapResearchJobRow(r));
   },
 
-  getResearchJobById(id: string) {
-    const row = db.prepare('SELECT * FROM research_jobs WHERE id = ?').get(id) as any;
+  async getResearchJobById(id: string) {
+    const row = await db.prepare('SELECT * FROM research_jobs WHERE id = ?').get(id) as any;
     if (!row) return null;
     return DAL.mapResearchJobRow(row);
   },
 
-  mapResearchJobRow(row: any) {
+  async mapResearchJobRow(row: any) {
     if (!row) return null;
     let parsedCriteria = {};
     try {
@@ -481,7 +481,7 @@ export const DAL = {
     };
   },
 
-  updateResearchJobStatus(id: string, status: string, statusMessage?: string, notes?: string) {
+  async updateResearchJobStatus(id: string, status: string, statusMessage?: string, notes?: string) {
     const now = new Date().toISOString();
     const completedAt = (status === 'COMPLETED' || status === 'READY_FOR_REVIEW' || status === 'FAILED') ? now : null;
 
@@ -497,7 +497,7 @@ export const DAL = {
     return DAL.getResearchJobById(id);
   },
 
-  updateResearchJobMetrics(id: string, metrics: {
+  async updateResearchJobMetrics(id: string, metrics: {
     candidateCount?: number;
     qualifiedCount?: number;
     finalShortlistCount?: number;
@@ -506,7 +506,7 @@ export const DAL = {
     status?: string;
     statusMessage?: string;
   }) {
-    const existing = db.prepare('SELECT * FROM research_jobs WHERE id = ?').get(id) as any;
+    const existing = await db.prepare('SELECT * FROM research_jobs WHERE id = ?').get(id) as any;
     if (!existing) return null;
 
     const candCount = metrics.candidateCount !== undefined ? metrics.candidateCount : existing.candidate_count;
@@ -517,7 +517,7 @@ export const DAL = {
     const status = metrics.status || existing.status;
     const statusMsg = metrics.statusMessage || existing.status_message;
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE research_jobs SET
         candidate_count = ?,
         qualified_count = ?,
@@ -532,7 +532,7 @@ export const DAL = {
     return DAL.getResearchJobById(id);
   },
 
-  getResearchCandidates(statusFilter?: string, searchQuery?: string, isListOnly: boolean = false) {
+  async getResearchCandidates(statusFilter?: string, searchQuery?: string, isListOnly: boolean = false) {
     let query = 'SELECT * FROM research_candidates WHERE 1=1';
     const params: any[] = [];
 
@@ -548,16 +548,16 @@ export const DAL = {
     }
 
     query += ' ORDER BY created_at DESC';
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = await db.prepare(query).all(...params) as any[];
     return rows.map(r => DAL.mapCandidateRow(r, isListOnly));
   },
 
-  getCandidateById(id: string): any {
-    const row = db.prepare('SELECT * FROM research_candidates WHERE id = ?').get(id) as any;
+  async getCandidateById(id: string): Promise<any>  {
+    const row = await db.prepare('SELECT * FROM research_candidates WHERE id = ?').get(id) as any;
     if (!row) return null;
 
     const candidate = DAL.mapCandidateRow(row, false);
-    const notesRows = db.prepare('SELECT * FROM candidate_notes WHERE candidate_id = ? ORDER BY date DESC, created_at DESC').all(id) as any[];
+    const notesRows = await db.prepare('SELECT * FROM candidate_notes WHERE candidate_id = ? ORDER BY date DESC, created_at DESC').all(id) as any[];
 
     candidate.candidateNotes = notesRows.map(n => ({
       id: n.id,
@@ -570,7 +570,7 @@ export const DAL = {
     }));
 
     if (candidate.jobId) {
-      const jobRow = db.prepare('SELECT original_instruction FROM research_jobs WHERE id = ?').get(candidate.jobId) as any;
+      const jobRow = await db.prepare('SELECT original_instruction FROM research_jobs WHERE id = ?').get(candidate.jobId) as any;
       if (jobRow) {
         candidate.originatingInstruction = jobRow.original_instruction;
       }
@@ -579,7 +579,7 @@ export const DAL = {
     return candidate;
   },
 
-  createResearchCandidate(data: any) {
+  async createResearchCandidate(data: any) {
     const id = `rc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const now = new Date().toISOString();
     const dateStr = now.split('T')[0];
@@ -637,11 +637,11 @@ export const DAL = {
       `).run(noteId, id, noteText, dateStr, source, sourceUrl, now);
     }
 
-    return DAL.getCandidateById(id);
+    return await DAL.getCandidateById(id);
   },
 
-  updateCandidate(id: string, data: any) {
-    const existing = db.prepare('SELECT * FROM research_candidates WHERE id = ?').get(id) as any;
+  async updateCandidate(id: string, data: any) {
+    const existing = await db.prepare('SELECT * FROM research_candidates WHERE id = ?').get(id) as any;
     if (!existing) return null;
 
     const now = new Date().toISOString();
@@ -670,7 +670,7 @@ export const DAL = {
     const jobId = data.jobId !== undefined ? data.jobId : existing.job_id;
     const evidenceJson = data.evidenceList !== undefined ? JSON.stringify(data.evidenceList) : (data.evidenceJson !== undefined ? data.evidenceJson : existing.evidence_json);
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE research_candidates SET
         name = ?, website = ?, domain = ?, location = ?, company_type = ?, industry = ?,
         industry_segment = ?, city = ?, description = ?, source = ?, source_url = ?,
@@ -691,10 +691,10 @@ export const DAL = {
       id
     );
 
-    return DAL.getCandidateById(id);
+    return await DAL.getCandidateById(id);
   },
 
-  addCandidateNote(candidateId: string, noteData: { note: string; date?: string; source?: string; sourceUrl?: string }) {
+  async addCandidateNote(candidateId: string, noteData: { note: string; date?: string; source?: string; sourceUrl?: string }) {
     const noteId = `cnote-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
     const now = new Date().toISOString();
     const dateStr = noteData.date || now.split('T')[0];
@@ -704,18 +704,18 @@ export const DAL = {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(noteId, candidateId, noteData.note, dateStr, noteData.source || '', noteData.sourceUrl || '', now);
 
-    return DAL.getCandidateById(candidateId);
+    return await DAL.getCandidateById(candidateId);
   },
 
-  approveCandidate(candidateId: string) {
-    const candidate = DAL.getCandidateById(candidateId);
+  async approveCandidate(candidateId: string) {
+    const candidate = await DAL.getCandidateById(candidateId);
     if (!candidate) throw new Error('Candidate not found');
 
     const normCandidateDomain = normalizeDomain(candidate.website || candidate.domain);
     const candidateNameLower = candidate.companyName.trim().toLowerCase();
 
     // 1. Check for existing company match
-    const allCompanies = db.prepare('SELECT * FROM companies WHERE is_archived = 0').all() as any[];
+    const allCompanies = await db.prepare('SELECT * FROM companies WHERE is_archived = 0').all() as any[];
 
     let matchedCompany = allCompanies.find(c => {
       const cDomain = normalizeDomain(c.website || c.domain);
@@ -781,7 +781,7 @@ export const DAL = {
     }
 
     // Mark candidate as APPROVED and attach created_company_id
-    db.prepare(`
+    await db.prepare(`
       UPDATE research_candidates SET
         research_status = 'APPROVED',
         verification_status = 'Approved',
@@ -791,7 +791,7 @@ export const DAL = {
     `).run(companyId, now, candidateId);
 
     // Sync research data to research_notes table for Company Account → AI Research tab
-    const existingResNote = db.prepare('SELECT * FROM research_notes WHERE company_id = ?').get(companyId) as any;
+    const existingResNote = await db.prepare('SELECT * FROM research_notes WHERE company_id = ?').get(companyId) as any;
     const strengths = candidate.fitReason ? [candidate.fitReason] : ['Strong market alignment'];
     const growthSignals = candidate.businessSignals?.projectsWorkTypes ? [candidate.businessSignals.projectsWorkTypes] : ['Target sector active'];
     const sourcesList = candidate.source ? [{ title: candidate.source, url: candidate.sourceUrl || '' }] : [];
@@ -822,7 +822,7 @@ export const DAL = {
   },
 
   // Search
-  searchEntities(queryStr: string) {
+  async searchEntities(queryStr: string) {
     const q = `%${queryStr.trim()}%`;
 
     const companies = db.prepare(`
@@ -857,7 +857,7 @@ export const DAL = {
       LIMIT 5
     `).all(q, q) as any[];
 
-    const candidates = db.prepare(`
+    const candidates = await db.prepare(`
       SELECT id, name, company_type, location, research_status, fit_score
       FROM research_candidates
       WHERE name LIKE ? OR location LIKE ? OR company_type LIKE ? OR industry LIKE ?
@@ -894,12 +894,12 @@ export const DAL = {
     };
   },
 
-  getUsers() {
-    return db.prepare('SELECT id, name, email, role FROM users ORDER BY name ASC').all() as any[];
+  async getUsers() {
+    return await db.prepare('SELECT id, name, email, role FROM users ORDER BY name ASC').all() as any[];
   },
 
   // Manual Company Creation & Management
-  createCompany(data: any, currentUser?: any) {
+  async createCompany(data: any, currentUser?: any) {
     const name = (data.name || data.companyName || '').trim();
     if (!name) throw new Error('Company name is required');
 
@@ -915,7 +915,7 @@ export const DAL = {
 
     const normDomain = normalizeDomain(domain || website);
     const nameLower = name.toLowerCase();
-    const allCompanies = db.prepare('SELECT * FROM companies WHERE is_archived = 0').all() as any[];
+    const allCompanies = await db.prepare('SELECT * FROM companies WHERE is_archived = 0').all() as any[];
     const existing = allCompanies.find(c => {
       const cDom = normalizeDomain(c.website || c.domain);
       if (normDomain && cDom && normDomain === cDom) return true;
@@ -956,12 +956,12 @@ export const DAL = {
     return {
       success: true,
       companyId,
-      company: DAL.getCompanyById(companyId)
+      company: await DAL.getCompanyById(companyId)
     };
   },
 
-  updateCompany(id: string, data: any) {
-    const existing = db.prepare('SELECT * FROM companies WHERE id = ?').get(id) as any;
+  async updateCompany(id: string, data: any) {
+    const existing = await db.prepare('SELECT * FROM companies WHERE id = ?').get(id) as any;
     if (!existing) return null;
 
     const now = new Date().toISOString();
@@ -972,7 +972,7 @@ export const DAL = {
     const city = data.city !== undefined ? data.city : (data.location !== undefined ? data.location : existing.city);
     const employeeCount = data.employeeCount !== undefined ? data.employeeCount : existing.employee_count;
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE companies SET
         name = ?, website = ?, domain = ?, type = ?, city = ?, employee_count = ?, updated_at = ?
       WHERE id = ?
@@ -987,11 +987,11 @@ export const DAL = {
       });
     }
 
-    return DAL.getCompanyById(id);
+    return await DAL.getCompanyById(id);
   },
 
-  updateRelationship(companyId: string, data: any) {
-    const existing = db.prepare('SELECT * FROM relationships WHERE company_id = ?').get(companyId) as any;
+  async updateRelationship(companyId: string, data: any) {
+    const existing = await db.prepare('SELECT * FROM relationships WHERE company_id = ?').get(companyId) as any;
     const now = new Date().toISOString();
 
     if (!existing) {
@@ -1016,7 +1016,7 @@ export const DAL = {
       const nextAction = data.nextAction !== undefined ? data.nextAction : existing.next_action;
       const nextActionDate = data.nextActionDate !== undefined ? data.nextActionDate : existing.next_action_date;
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE relationships SET
           status = ?, temperature = ?, owner = ?, relationship_notes = ?,
           next_action = ?, next_action_date = ?, updated_at = ?
@@ -1024,10 +1024,10 @@ export const DAL = {
       `).run(status, temperature, owner, notes, nextAction, nextActionDate, now, companyId);
     }
 
-    return DAL.getCompanyById(companyId);
+    return await DAL.getCompanyById(companyId);
   },
 
-  createContact(data: any) {
+  async createContact(data: any) {
     if (!data.companyId) throw new Error('Company ID is required for contact');
     if (!data.name || !data.name.trim()) throw new Error('Contact name is required');
 
@@ -1044,11 +1044,11 @@ export const DAL = {
       data.isDecisionMaker ? 1 : 0, now, now
     );
 
-    return DAL.getCompanyById(data.companyId);
+    return await DAL.getCompanyById(data.companyId);
   },
 
-  updateContact(id: string, data: any) {
-    const existing = db.prepare('SELECT * FROM contacts WHERE id = ?').get(id) as any;
+  async updateContact(id: string, data: any) {
+    const existing = await db.prepare('SELECT * FROM contacts WHERE id = ?').get(id) as any;
     if (!existing) return null;
 
     const now = new Date().toISOString();
@@ -1060,25 +1060,25 @@ export const DAL = {
     const notes = data.notes !== undefined ? data.notes : existing.notes;
     const isDecisionMaker = data.isDecisionMaker !== undefined ? (data.isDecisionMaker ? 1 : 0) : existing.is_decision_maker;
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE contacts SET
         name = ?, role = ?, email = ?, phone = ?, linkedin = ?, notes = ?, is_decision_maker = ?, updated_at = ?
       WHERE id = ?
     `).run(name, role, email, phone, linkedin, notes, isDecisionMaker, now, id);
 
-    return DAL.getCompanyById(existing.company_id);
+    return await DAL.getCompanyById(existing.company_id);
   },
 
-  archiveContact(id: string) {
-    const existing = db.prepare('SELECT * FROM contacts WHERE id = ?').get(id) as any;
+  async archiveContact(id: string) {
+    const existing = await db.prepare('SELECT * FROM contacts WHERE id = ?').get(id) as any;
     if (!existing) return null;
 
     const now = new Date().toISOString();
-    db.prepare('UPDATE contacts SET is_archived = 1, updated_at = ? WHERE id = ?').run(now, id);
-    return DAL.getCompanyById(existing.company_id);
+    await db.prepare('UPDATE contacts SET is_archived = 1, updated_at = ? WHERE id = ?').run(now, id);
+    return await DAL.getCompanyById(existing.company_id);
   },
 
-  createOpportunity(data: any) {
+  async createOpportunity(data: any) {
     if (!data.companyId) throw new Error('Company ID is required for opportunity');
     if (!data.title || !data.title.trim()) throw new Error('Opportunity title is required');
 
@@ -1097,11 +1097,11 @@ export const DAL = {
       now, now
     );
 
-    return DAL.getCompanyById(data.companyId);
+    return await DAL.getCompanyById(data.companyId);
   },
 
-  updateOpportunity(id: string, data: any) {
-    const existing = db.prepare('SELECT * FROM opportunities WHERE id = ?').get(id) as any;
+  async updateOpportunity(id: string, data: any) {
+    const existing = await db.prepare('SELECT * FROM opportunities WHERE id = ?').get(id) as any;
     if (!existing) return null;
 
     const now = new Date().toISOString();
@@ -1111,22 +1111,22 @@ export const DAL = {
     const nextAction = data.nextAction !== undefined ? data.nextAction : existing.next_action;
     const nextActionDate = data.nextActionDate !== undefined ? data.nextActionDate : existing.next_action_date;
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE opportunities SET
         title = ?, stage = ?, estimated_value_amount = ?, estimated_value_formatted = ?,
         next_action = ?, next_action_date = ?, updated_at = ?
       WHERE id = ?
     `).run(title, stage, rawVal, formatINR(rawVal), nextAction, nextActionDate, now, id);
 
-    return DAL.getCompanyById(existing.company_id);
+    return await DAL.getCompanyById(existing.company_id);
   },
 
-  archiveOpportunity(id: string) {
-    const existing = db.prepare('SELECT * FROM opportunities WHERE id = ?').get(id) as any;
+  async archiveOpportunity(id: string) {
+    const existing = await db.prepare('SELECT * FROM opportunities WHERE id = ?').get(id) as any;
     if (!existing) return null;
 
     const now = new Date().toISOString();
-    db.prepare("UPDATE opportunities SET is_archived = 1, stage = 'Closed Lost', updated_at = ? WHERE id = ?").run(now, id);
-    return DAL.getCompanyById(existing.company_id);
+    await db.prepare("UPDATE opportunities SET is_archived = 1, stage = 'Closed Lost', updated_at = ? WHERE id = ?").run(now, id);
+    return await DAL.getCompanyById(existing.company_id);
   }
 };

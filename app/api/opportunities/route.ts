@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     }
 
     query += ` ORDER BY o.created_at DESC`;
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = await db.prepare(query).all(...params) as any[];
 
     const opportunities = rows.map((o) => {
       const numericAmount = o.estimated_value_amount || 0;
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Company ID and opportunity title are required' }, { status: 400 });
     }
 
-    const result = DAL.createOpportunity(body);
+    const result = await DAL.createOpportunity(body);
     return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to create opportunity' }, { status: 500 });
@@ -70,7 +70,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Opportunity ID is required' }, { status: 400 });
     }
 
-    const result = DAL.updateOpportunity(id, body);
+    const result = await DAL.updateOpportunity(id, body);
     return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to update opportunity' }, { status: 500 });
@@ -86,7 +86,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Opportunity ID is required' }, { status: 400 });
     }
 
-    const result = DAL.archiveOpportunity(id);
+    const result = await DAL.archiveOpportunity(id);
     return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to archive opportunity' }, { status: 500 });

@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       });
     }
 
-    const results = DAL.searchEntities(query);
+    const results = await DAL.searchEntities(query);
     return NextResponse.json(results);
   } catch (error) {
     return NextResponse.json({ error: 'Search failed' }, { status: 500 });

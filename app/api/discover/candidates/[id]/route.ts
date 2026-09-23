@@ -4,7 +4,7 @@ import { DAL } from '@/lib/db/dal';
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
-    const candidate = DAL.getCandidateById(params.id);
+    const candidate = await DAL.getCandidateById(params.id);
     if (!candidate) {
       return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
     }
@@ -17,7 +17,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   try {
     const body = await req.json();
-    const updated = DAL.updateCandidate(params.id, body);
+    const updated = await DAL.updateCandidate(params.id, body);
     if (!updated) {
       return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
     }

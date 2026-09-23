@@ -6,7 +6,7 @@ import { db } from '@/lib/db';
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
     const { id } = params;
-    const accountData = DAL.getCompanyById(id);
+    const accountData = await DAL.getCompanyById(id);
 
     if (!accountData) {
       return NextResponse.json({ error: 'Company not found' }, { status: 404 });
@@ -26,14 +26,14 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     if (body.owner !== undefined) {
       const { getCurrentUserFromRequest } = require('@/lib/auth');
       const currentUser = await getCurrentUserFromRequest(request);
-      const existing = db.prepare('SELECT owner FROM relationships WHERE company_id = ?').get(id) as any;
+      const existing = await db.prepare('SELECT owner FROM relationships WHERE company_id = ?').get(id) as any;
       if (existing && existing.owner !== body.owner) {
         if (!currentUser || currentUser.role !== 'ADMIN') {
           return NextResponse.json({ error: 'Forbidden: Only administrators can reassign company owner' }, { status: 403 });
         }
       }
     }
-    const updated = DAL.updateCompany(id, body);
+    const updated = await DAL.updateCompany(id, body);
     return NextResponse.json(updated);
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to update company' }, { status: 500 });
@@ -47,14 +47,14 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     if (body.owner !== undefined) {
       const { getCurrentUserFromRequest } = require('@/lib/auth');
       const currentUser = await getCurrentUserFromRequest(request);
-      const existing = db.prepare('SELECT owner FROM relationships WHERE company_id = ?').get(id) as any;
+      const existing = await db.prepare('SELECT owner FROM relationships WHERE company_id = ?').get(id) as any;
       if (existing && existing.owner !== body.owner) {
         if (!currentUser || currentUser.role !== 'ADMIN') {
           return NextResponse.json({ error: 'Forbidden: Only administrators can reassign company owner' }, { status: 403 });
         }
       }
     }
-    const updated = DAL.updateCompany(id, body);
+    const updated = await DAL.updateCompany(id, body);
     return NextResponse.json(updated);
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to update company' }, { status: 500 });
@@ -66,7 +66,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     const { id } = params;
     const now = new Date().toISOString();
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE companies SET is_archived = 1, updated_at = ? WHERE id = ?
     `).run(now, id);
 

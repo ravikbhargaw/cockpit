@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const jobId = params.id;
-    const job = DAL.getResearchJobById(jobId);
+    const job = await DAL.getResearchJobById(jobId);
 
     if (!job) {
       return NextResponse.json(
@@ -19,7 +19,7 @@ export async function GET(
       );
     }
 
-    const allCandidates = DAL.getResearchCandidates();
+    const allCandidates = await DAL.getResearchCandidates();
     const jobCandidates = allCandidates.filter((c: any) => c.jobId === jobId);
 
     return NextResponse.json({

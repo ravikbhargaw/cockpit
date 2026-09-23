@@ -10,8 +10,8 @@ export async function GET(req: Request) {
     const status = searchParams.get('status') || 'All';
     const search = searchParams.get('search') || '';
 
-    const candidates = DAL.getResearchCandidates(status, search, true);
-    const metrics = DAL.getResearchQueueMetrics();
+    const candidates = await DAL.getResearchCandidates(status, search, true);
+    const metrics = await DAL.getResearchQueueMetrics();
 
     return NextResponse.json({ candidates, metrics });
   } catch (error) {
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     if (!body.companyName && !body.name) {
       return NextResponse.json({ error: 'Company name is required' }, { status: 400 });
     }
-    const created = DAL.createResearchCandidate(body);
+    const created = await DAL.createResearchCandidate(body);
     return NextResponse.json(created);
   } catch (error) {
     return NextResponse.json({ error: 'Failed to create research candidate' }, { status: 500 });

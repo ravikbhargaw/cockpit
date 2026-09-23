@@ -8,7 +8,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (!body.note || body.note.trim() === '') {
       return NextResponse.json({ error: 'Note text is required' }, { status: 400 });
     }
-    const updatedCandidate = DAL.addCandidateNote(params.id, body);
+    const updatedCandidate = await DAL.addCandidateNote(params.id, body);
     return NextResponse.json(updatedCandidate);
   } catch (error) {
     return NextResponse.json({ error: 'Failed to add research note' }, { status: 500 });

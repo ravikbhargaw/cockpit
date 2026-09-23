@@ -30,7 +30,7 @@ export async function GET(request: Request) {
 
     query += ` ORDER BY c.created_at DESC`;
 
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = await db.prepare(query).all(...params) as any[];
 
     const companies = rows.map((r) => ({
       id: r.id,
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     }
 
     const { DAL } = require('@/lib/db/dal');
-    const result = DAL.createCompany(body, currentUser);
+    const result = await DAL.createCompany(body, currentUser);
     return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to create company' }, { status: 500 });
