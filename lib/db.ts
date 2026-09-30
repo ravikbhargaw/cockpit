@@ -77,9 +77,21 @@ function getDB() {
     const sqliteDb = new Database(dbPath);
     sqliteDb.pragma('journal_mode = WAL');
     sqliteDb.pragma('foreign_keys = ON');
-    sqliteDb._isSqlite = true;
-    dbInstance = sqliteDb;
-    return sqliteDb;
+
+    dbInstance = {
+      _isSqlite: true,
+      prepare(sql: string) {
+        const stmt = sqliteDb.prepare(sql);
+        return {
+          async all(...params: any[]) { return stmt.all(...params); },
+          async get(...params: any[]) { return stmt.get(...params); },
+          async run(...params: any[]) { return stmt.run(...params); },
+        };
+      },
+      exec(sql: string) { sqliteDb.exec(sql); },
+      pragma(sql: string) { sqliteDb.pragma(sql); },
+    };
+    return dbInstance;
   } catch (err) {
     // Safe build-time dummy driver (not memoized to allow runtime process.env.DATABASE_URL pickup)
     return {
@@ -96,8 +108,18 @@ function getDB() {
   }
 }
 
-export const db: any = new Proxy(
-  {},
+export interface DatabaseClient {
+  prepare(sql: string): {
+    all(...params: any[]): Promise<any[]>;
+    get(...params: any[]): Promise<any>;
+    run(...params: any[]): Promise<{ changes: number }>;
+  };
+  exec(sql: string): void;
+  pragma(sql: string): void;
+}
+
+export const db: DatabaseClient = new Proxy(
+  {} as DatabaseClient,
   {
     get(target, prop: string) {
       const instance = getDB();
@@ -111,7 +133,7 @@ export const db: any = new Proxy(
 );
 
 // Initialize schema
-export function initDB() {
+export async function initDB() {
   try {
     const connectionString = process.env.DATABASE_URL || '';
     if (connectionString.startsWith('postgres://') || connectionString.startsWith('postgresql://')) {
@@ -382,7 +404,7 @@ export function initDB() {
     ];
 
     try {
-      const existingCols = (db.prepare("PRAGMA table_info(research_candidates)").all() as any[]).map((c) => c.name);
+      const existingCols = ((await db.prepare("PRAGMA table_info(research_candidates)").all()) as any[]).map((c) => c.name);
       for (const col of candidateCols) {
         if (!existingCols.includes(col.name)) {
           db.exec(`ALTER TABLE research_candidates ADD COLUMN ${col.name} ${col.type};`);
@@ -391,7 +413,7 @@ export function initDB() {
     } catch {}
 
     try {
-      const existingUserCols = (db.prepare("PRAGMA table_info(users)").all() as any[]).map((c) => c.name);
+      const existingUserCols = ((await db.prepare("PRAGMA table_info(users)").all()) as any[]).map((c) => c.name);
       if (!existingUserCols.includes('password_hash')) {
         db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT;");
       }
@@ -401,12 +423,12 @@ export function initDB() {
     } catch {}
 
     try {
-      const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
+      const userCount = ((await db.prepare('SELECT COUNT(*) as count FROM users').get()) as { count: number }).count;
       if (userCount === 0) {
         const now = new Date().toISOString();
         const stmt = db.prepare('INSERT INTO users (id, name, email, role, session_version, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)');
-        stmt.run('usr-1', 'Ravi', 'ravi@meaven.in', 'ADMIN', now, now);
-        stmt.run('usr-2', 'Associate User', 'associate@meaven.in', 'USER', now, now);
+        await stmt.run('usr-1', 'Ravi', 'ravi@meaven.in', 'ADMIN', now, now);
+        await stmt.run('usr-2', 'Associate User', 'associate@meaven.in', 'USER', now, now);
       }
     } catch {}
   } catch (err) {

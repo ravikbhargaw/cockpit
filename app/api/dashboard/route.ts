@@ -10,47 +10,47 @@ export async function GET() {
     const today = new Date().toISOString().split('T')[0];
 
     // Active Partners Count
-    const activePartnersRow = db.prepare(`
+    const activePartnersRow = (await db.prepare(`
       SELECT COUNT(*) as count FROM relationships r
       JOIN companies c ON r.company_id = c.id
       WHERE c.is_archived = 0 AND r.status IN ('Active Partner', 'Repeat Partner', 'Strategic Partner')
-    `).get() as { count: number };
+    `).get()) as { count: number };
 
     // Open Opportunities & Pipeline Value
-    const oppsRow = db.prepare(`
+    const oppsRow = (await db.prepare(`
       SELECT COUNT(*) as count, COALESCE(SUM(o.estimated_value_amount), 0) as total_val
       FROM opportunities o
       JOIN companies c ON o.company_id = c.id
       WHERE c.is_archived = 0 AND (o.is_archived IS NULL OR o.is_archived = 0) AND o.stage NOT IN ('Closed Won', 'Closed Lost')
-    `).get() as { count: number; total_val: number };
+    `).get()) as { count: number; total_val: number };
 
     // Follow-ups Due Today
-    const dueTodayRow = db.prepare(`
+    const dueTodayRow = (await db.prepare(`
       SELECT COUNT(*) as count FROM relationships r
       JOIN companies c ON r.company_id = c.id
       WHERE c.is_archived = 0 AND r.next_action_date = ? AND (r.next_action NOT LIKE '%No further action%' OR r.next_action IS NULL)
-    `).get(today) as { count: number };
+    `).get(today)) as { count: number };
 
     // Overdue Follow-ups
-    const overdueRow = db.prepare(`
+    const overdueRow = (await db.prepare(`
       SELECT COUNT(*) as count FROM relationships r
       JOIN companies c ON r.company_id = c.id
       WHERE c.is_archived = 0 AND r.next_action_date IS NOT NULL AND r.next_action_date != '' AND r.next_action_date < ? AND (r.next_action NOT LIKE '%No further action%' OR r.next_action IS NULL)
-    `).get(today) as { count: number };
+    `).get(today)) as { count: number };
 
     // Stale Relationships (inactive >= 20 days)
-    const staleRow = db.prepare(`
+    const staleRow = (await db.prepare(`
       SELECT COUNT(*) as count FROM relationships r
       JOIN companies c ON r.company_id = c.id
       WHERE c.is_archived = 0 AND r.days_inactive >= 20
-    `).get() as { count: number };
+    `).get()) as { count: number };
 
     // Format pipeline total value using formatINR
     const totalVal = oppsRow.total_val;
     const pipelineValueFormatted = formatINR(totalVal);
 
     // Today's Priorities (Relationship follow-ups with valid dates)
-    const priorityRels = db.prepare(`
+    const priorityRels = (await db.prepare(`
       SELECT r.*, c.name as company_name
       FROM relationships r
       JOIN companies c ON r.company_id = c.id
@@ -61,7 +61,7 @@ export async function GET() {
         AND (r.next_action NOT LIKE '%No further action%' OR r.next_action IS NULL)
       ORDER BY r.next_action_date ASC
       LIMIT 5
-    `).all(today) as any[];
+    `).all(today)) as any[];
 
     const priorities = priorityRels.map((p) => ({
       id: `prio-rel-${p.id}`,
@@ -76,7 +76,7 @@ export async function GET() {
     }));
 
     // Add Opportunity Next Actions to Today Priorities
-    const oppPriorities = db.prepare(`
+    const oppPriorities = (await db.prepare(`
       SELECT o.*, c.name as company_name
       FROM opportunities o
       JOIN companies c ON o.company_id = c.id
@@ -88,7 +88,7 @@ export async function GET() {
         AND o.next_action_date <= ?
       ORDER BY o.next_action_date ASC
       LIMIT 5
-    `).all(today) as any[];
+    `).all(today)) as any[];
 
     for (const opp of oppPriorities) {
       priorities.push({
@@ -103,7 +103,7 @@ export async function GET() {
     }
 
     // Check for Research Candidates READY_FOR_REVIEW
-    const readyCandidateRow = db.prepare("SELECT COUNT(*) as count FROM research_candidates WHERE research_status = 'READY_FOR_REVIEW'").get() as { count: number };
+    const readyCandidateRow = (await db.prepare("SELECT COUNT(*) as count FROM research_candidates WHERE research_status = 'READY_FOR_REVIEW'").get()) as { count: number };
     if (readyCandidateRow && readyCandidateRow.count > 0) {
       priorities.unshift({
         id: 'prio-ready-candidates',
