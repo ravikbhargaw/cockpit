@@ -280,3 +280,37 @@ export interface ExecutiveKPIs {
   followupsDue: number;
   staleRelationships: number;
 }
+
+export interface FounderCheckin {
+  id: string;
+  date: string;
+  workCompleted: boolean;
+  salesCompleted: boolean;
+  bodyCompleted: boolean;
+  sleepCompleted: boolean;
+  calculatedScore: number;
+  calculatedShowedUp: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FounderStats {
+  currentDay: number;
+  totalDays: number;
+  formattedDay: string;
+  sevenDayAvg: number;
+  thirtyDayAvg: number;
+  overallAvg: number;
+  totalCheckinDays: number;
+}
+
+export interface PasswordResetToken {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: string;
+  usedAt?: string | null;
+  createdAt: string;
+}
+
+

@@ -1,6 +1,8 @@
-export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { COOKIE_NAME, verifyPassword, createSessionToken, isAuthConfigured } from '@/lib/auth';
+import { DAL } from '@/lib/db/dal';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
@@ -12,16 +14,26 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { password } = body;
+    const { password, email } = body;
 
-    if (!password || !verifyPassword(password)) {
+    // Check user record by email (defaults to Ravi admin)
+    const userEmail = email && typeof email === 'string' ? email.trim() : 'ravi@meaven.in';
+    const user = await DAL.getUserByEmail(userEmail);
+
+    const storedHash = user?.passwordHash;
+    const isValid = verifyPassword(password, storedHash);
+
+    if (!password || !isValid) {
       return NextResponse.json(
         { error: 'Invalid password. Access denied.' },
         { status: 401 }
       );
     }
 
-    const sessionToken = await createSessionToken();
+    const userId = user?.id || 'usr-1';
+    const sessionVersion = user?.sessionVersion || 1;
+    const sessionToken = await createSessionToken(userId, sessionVersion);
+
     if (!sessionToken) {
       return NextResponse.json(
         { error: 'Failed to generate secure session.' },
@@ -31,7 +43,12 @@ export async function POST(request: Request) {
 
     const response = NextResponse.json({
       success: true,
-      user: { name: 'Ravi', role: 'Founder & CEO' },
+      user: {
+        id: userId,
+        name: user?.name || 'Ravi',
+        email: user?.email || 'ravi@meaven.in',
+        role: user?.role || 'ADMIN',
+      },
     });
 
     response.cookies.set({
@@ -45,7 +62,8 @@ export async function POST(request: Request) {
     });
 
     return response;
-  } catch {
+  } catch (error) {
+    console.error('Login error:', error);
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 }

@@ -10,11 +10,13 @@ import {
   Target,
   Activity as ActivityIcon,
   BrainCircuit,
+  Flame,
   Settings as SettingsIcon,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { name: 'Today', href: '/', icon: LayoutDashboard },
+  { name: '180-Day Founder', href: '/180-day-founder', icon: Flame },
   { name: 'Discover', href: '/discover', icon: Compass },
   { name: 'Relationships', href: '/relationships', icon: Users },
   { name: 'Opportunities', href: '/opportunities', icon: Target },

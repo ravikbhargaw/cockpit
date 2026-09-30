@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, Suspense } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ShieldCheck, Lock, ArrowRight, AlertCircle, Sparkles } from 'lucide-react';
 
@@ -84,6 +85,14 @@ function LoginForm() {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 bg-cockpit-bg border border-cockpit-border focus:border-meaven-blue rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-colors"
             />
+          </div>
+          <div className="flex justify-end mt-1.5">
+            <Link
+              href="/forgot-password"
+              className="text-xs text-cockpit-muted hover:text-meaven-light transition-colors font-medium"
+            >
+              Forgot password?
+            </Link>
           </div>
         </div>
 

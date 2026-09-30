@@ -319,6 +319,29 @@ export function initDB() {
         status_message TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS founder_checkins (
+        id TEXT PRIMARY KEY,
+        date TEXT UNIQUE NOT NULL,
+        work_completed INTEGER DEFAULT 0,
+        sales_completed INTEGER DEFAULT 0,
+        body_completed INTEGER DEFAULT 0,
+        sleep_completed INTEGER DEFAULT 0,
+        calculated_score INTEGER DEFAULT 0,
+        calculated_showed_up INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
       CREATE INDEX IF NOT EXISTS idx_relationships_company_id ON relationships(company_id);
       CREATE INDEX IF NOT EXISTS idx_contacts_company_id ON contacts(company_id);
       CREATE INDEX IF NOT EXISTS idx_opportunities_company_id ON opportunities(company_id);
@@ -328,6 +351,9 @@ export function initDB() {
       CREATE INDEX IF NOT EXISTS idx_research_candidates_status ON research_candidates(research_status);
       CREATE INDEX IF NOT EXISTS idx_candidate_notes_candidate_id ON candidate_notes(candidate_id);
       CREATE INDEX IF NOT EXISTS idx_project_links_company_id ON project_links(company_id);
+      CREATE INDEX IF NOT EXISTS idx_founder_checkins_date ON founder_checkins(date);
+      CREATE INDEX IF NOT EXISTS idx_reset_tokens_hash ON password_reset_tokens(token_hash);
+      CREATE INDEX IF NOT EXISTS idx_reset_tokens_user ON password_reset_tokens(user_id);
     `);
 
     const candidateCols = [
@@ -365,10 +391,20 @@ export function initDB() {
     } catch {}
 
     try {
+      const existingUserCols = (db.prepare("PRAGMA table_info(users)").all() as any[]).map((c) => c.name);
+      if (!existingUserCols.includes('password_hash')) {
+        db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT;");
+      }
+      if (!existingUserCols.includes('session_version')) {
+        db.exec("ALTER TABLE users ADD COLUMN session_version INTEGER DEFAULT 1;");
+      }
+    } catch {}
+
+    try {
       const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
       if (userCount === 0) {
         const now = new Date().toISOString();
-        const stmt = db.prepare('INSERT INTO users (id, name, email, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)');
+        const stmt = db.prepare('INSERT INTO users (id, name, email, role, session_version, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)');
         stmt.run('usr-1', 'Ravi', 'ravi@meaven.in', 'ADMIN', now, now);
         stmt.run('usr-2', 'Associate User', 'associate@meaven.in', 'USER', now, now);
       }

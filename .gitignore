@@ -30,5 +30,7 @@ next-env.d.ts
 # local database & backups
 /data/*.db*
 /data/backups/
+/data/dev_email_outbox.log
+
 
 

@@ -8,9 +8,12 @@ function parseJsonField(val: any): any {
   return [];
 }
 
+import crypto from 'crypto';
 import { db } from '../db';
 import { formatINR, normalizeDomain } from '@/lib/utils';
 import { VerificationStatus, PartnerOpportunitySignal } from '@/types';
+import { calculateExperimentDay, calculateCheckinScore } from '@/lib/founder180';
+import { hashResetToken } from '@/lib/auth';
 
 export const DAL = {
   // Companies
@@ -1138,5 +1141,223 @@ export const DAL = {
     const now = new Date().toISOString();
     await db.prepare("UPDATE opportunities SET is_archived = 1, stage = 'Closed Lost', updated_at = ? WHERE id = ?").run(now, id);
     return await DAL.getCompanyById(existing.company_id);
+  },
+
+  // 180-Day Founder Module DAL methods
+  async getFounderCheckinByDate(dateStr: string) {
+    const row = await db.prepare('SELECT * FROM founder_checkins WHERE date = ?').get(dateStr) as any;
+    if (!row) return null;
+    return {
+      id: row.id,
+      date: row.date,
+      workCompleted: Boolean(row.work_completed),
+      salesCompleted: Boolean(row.sales_completed),
+      bodyCompleted: Boolean(row.body_completed),
+      sleepCompleted: Boolean(row.sleep_completed),
+      calculatedScore: row.calculated_score,
+      calculatedShowedUp: Boolean(row.calculated_showed_up),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  },
+
+  async upsertFounderCheckin(data: {
+    date: string;
+    workCompleted: boolean;
+    salesCompleted: boolean;
+    bodyCompleted: boolean;
+    sleepCompleted: boolean;
+  }) {
+    const dateStr = data.date;
+    const { score, showedUp } = calculateCheckinScore(
+      data.workCompleted,
+      data.salesCompleted,
+      data.bodyCompleted,
+      data.sleepCompleted
+    );
+
+    const existing = await db.prepare('SELECT id FROM founder_checkins WHERE date = ?').get(dateStr) as any;
+    const now = new Date().toISOString();
+    const id = existing ? existing.id : `chk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    const stmt = db.prepare(`
+      INSERT INTO founder_checkins (
+        id, date, work_completed, sales_completed, body_completed, sleep_completed,
+        calculated_score, calculated_showed_up, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(date) DO UPDATE SET
+        work_completed=excluded.work_completed,
+        sales_completed=excluded.sales_completed,
+        body_completed=excluded.body_completed,
+        sleep_completed=excluded.sleep_completed,
+        calculated_score=excluded.calculated_score,
+        calculated_showed_up=excluded.calculated_showed_up,
+        updated_at=excluded.updated_at
+    `);
+
+    stmt.run(
+      id,
+      dateStr,
+      data.workCompleted ? 1 : 0,
+      data.salesCompleted ? 1 : 0,
+      data.bodyCompleted ? 1 : 0,
+      data.sleepCompleted ? 1 : 0,
+      score,
+      showedUp ? 1 : 0,
+      now,
+      now
+    );
+
+    return await DAL.getFounderCheckinByDate(dateStr);
+  },
+
+  async getFounderHistory() {
+    const rows = await db.prepare('SELECT * FROM founder_checkins ORDER BY date DESC').all() as any[];
+    return rows.map((row) => ({
+      id: row.id,
+      date: row.date,
+      workCompleted: Boolean(row.work_completed),
+      salesCompleted: Boolean(row.sales_completed),
+      bodyCompleted: Boolean(row.body_completed),
+      sleepCompleted: Boolean(row.sleep_completed),
+      calculatedScore: row.calculated_score,
+      calculatedShowedUp: Boolean(row.calculated_showed_up),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  },
+
+  async getFounderStats(targetDateStr?: string) {
+    const expInfo = calculateExperimentDay(targetDateStr);
+    const rows = await db.prepare('SELECT * FROM founder_checkins ORDER BY date ASC').all() as any[];
+
+    const refDate = targetDateStr ? new Date(`${targetDateStr}T00:00:00`) : new Date();
+    refDate.setHours(0, 0, 0, 0);
+
+    // Filter checkins within 7-day window [refDate - 6 days, refDate]
+    const sevenDaysAgo = new Date(refDate);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+    const refDateStr = refDate.toISOString().split('T')[0];
+
+    const sevenDayCheckins = rows.filter(r => r.date >= sevenDaysAgoStr && r.date <= refDateStr);
+    const sevenDayAvg = sevenDayCheckins.length > 0
+      ? Math.round(sevenDayCheckins.reduce((acc, r) => acc + r.calculated_score, 0) / sevenDayCheckins.length)
+      : 0;
+
+    // Filter checkins within 30-day window [refDate - 29 days, refDate]
+    const thirtyDaysAgo = new Date(refDate);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+    const thirtyDayCheckins = rows.filter(r => r.date >= thirtyDaysAgoStr && r.date <= refDateStr);
+    const thirtyDayAvg = thirtyDayCheckins.length > 0
+      ? Math.round(thirtyDayCheckins.reduce((acc, r) => acc + r.calculated_score, 0) / thirtyDayCheckins.length)
+      : 0;
+
+    // Overall average based on all recorded check-in days
+    const overallAvg = rows.length > 0
+      ? Math.round(rows.reduce((acc, r) => acc + r.calculated_score, 0) / rows.length)
+      : 0;
+
+    return {
+      currentDay: expInfo.day,
+      totalDays: expInfo.total,
+      formattedDay: expInfo.formatted,
+      sevenDayAvg,
+      thirtyDayAvg,
+      overallAvg,
+      totalCheckinDays: rows.length,
+    };
+  },
+
+  // Password Reset DAL Methods
+  async getUserByEmail(email: string) {
+    if (!email || typeof email !== 'string') return null;
+    const row = await db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)').get(email.trim()) as any;
+    if (!row) return null;
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      role: row.role,
+      passwordHash: row.password_hash,
+      sessionVersion: row.session_version || 1,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  },
+
+  async getUserById(id: string) {
+    if (!id) return null;
+    const row = await db.prepare('SELECT * FROM users WHERE id = ?').get(id) as any;
+    if (!row) return null;
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      role: row.role,
+      passwordHash: row.password_hash,
+      sessionVersion: row.session_version || 1,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  },
+
+  async createPasswordResetToken(userId: string) {
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashResetToken(rawToken);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+    const id = `prt_${now.getTime()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    // Invalidate previous unused reset tokens for this user
+    await db.prepare("UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND (used_at IS NULL OR used_at = '')").run(now.toISOString(), userId);
+
+    // Insert new token hash
+    await db.prepare(`
+      INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, userId, tokenHash, expiresAt, now.toISOString());
+
+    return { rawToken, expiresAt };
+  },
+
+  async validatePasswordResetToken(rawToken: string) {
+    if (!rawToken || typeof rawToken !== 'string') return { valid: false, reason: 'invalid' };
+    const tokenHash = hashResetToken(rawToken);
+    const row = await db.prepare("SELECT * FROM password_reset_tokens WHERE token_hash = ? AND (used_at IS NULL OR used_at = '')").get(tokenHash) as any;
+    if (!row) return { valid: false, reason: 'invalid' };
+
+    const now = new Date();
+    const expiresAt = new Date(row.expires_at);
+    if (now > expiresAt) {
+      return { valid: false, reason: 'expired' };
+    }
+
+    const user = await DAL.getUserById(row.user_id);
+    if (!user) return { valid: false, reason: 'invalid' };
+
+    return { valid: true, tokenRow: row, user };
+  },
+
+  async resetUserPassword(userId: string, newPasswordHash: string, tokenId: string) {
+    const now = new Date().toISOString();
+
+    // 1. Update user password hash & increment session_version to invalidate old sessions
+    await db.prepare(`
+      UPDATE users SET
+        password_hash = ?,
+        session_version = COALESCE(session_version, 1) + 1,
+        updated_at = ?
+      WHERE id = ?
+    `).run(newPasswordHash, now, userId);
+
+    // 2. Mark reset token as used
+    await db.prepare('UPDATE password_reset_tokens SET used_at = ? WHERE id = ?').run(now, tokenId);
+
+    return true;
   }
 };
+
+

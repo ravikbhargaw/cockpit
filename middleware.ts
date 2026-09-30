@@ -8,6 +8,8 @@ export async function middleware(request: NextRequest) {
   // Publicly accessible paths
   if (
     pathname === '/login' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password' ||
     pathname.startsWith('/api/auth/') ||
     pathname.startsWith('/_next') ||
     pathname === '/favicon.ico'
