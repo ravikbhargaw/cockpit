@@ -8,7 +8,6 @@ function parseJsonField(val: any): any {
   return [];
 }
 
-import crypto from 'crypto';
 import { db } from '../db';
 import { formatINR, normalizeDomain } from '@/lib/utils';
 import { VerificationStatus, PartnerOpportunitySignal } from '@/types';
@@ -1305,8 +1304,9 @@ export const DAL = {
   },
 
   async createPasswordResetToken(userId: string) {
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = hashResetToken(rawToken);
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const rawToken = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    const tokenHash = await hashResetToken(rawToken);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
     const id = `prt_${now.getTime()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -1325,7 +1325,7 @@ export const DAL = {
 
   async validatePasswordResetToken(rawToken: string) {
     if (!rawToken || typeof rawToken !== 'string') return { valid: false, reason: 'invalid' };
-    const tokenHash = hashResetToken(rawToken);
+    const tokenHash = await hashResetToken(rawToken);
     const row = await db.prepare("SELECT * FROM password_reset_tokens WHERE token_hash = ? AND (used_at IS NULL OR used_at = '')").get(tokenHash) as any;
     if (!row) return { valid: false, reason: 'invalid' };
 

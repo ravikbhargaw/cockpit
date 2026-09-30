@@ -2,22 +2,18 @@ export const COOKIE_NAME = 'cockpit_session';
 
 /**
  * Web Crypto HMAC-SHA256 signature generator.
- * Fully compatible with Next.js Edge Middleware, Cloudflare Workers, and Node.js.
+ * 100% compatible with Next.js Edge Middleware, Cloudflare Workers, and Node.js.
  */
 async function hmacSign(message: string, secret: string): Promise<string> {
   const enc = new TextEncoder();
-  const subtle = (globalThis.crypto && globalThis.crypto.subtle)
-    ? globalThis.crypto.subtle
-    : eval("require('crypto').webcrypto.subtle");
-
-  const key = await subtle.importKey(
+  const key = await crypto.subtle.importKey(
     'raw',
     enc.encode(secret),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
   );
-  const signature = await subtle.sign('HMAC', key, enc.encode(message));
+  const signature = await crypto.subtle.sign('HMAC', key, enc.encode(message));
   return Array.from(new Uint8Array(signature))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
@@ -33,37 +29,73 @@ export function isAuthConfigured(): boolean {
 }
 
 /**
- * Strong Password Hashing using PBKDF2 with SHA-256 (100,000 iterations).
- * Stored format: pbkdf2:100000:<salt_hex>:<hash_hex>
+ * Web Crypto PBKDF2 Password Hashing (100,000 iterations, SHA-256).
+ * Format: pbkdf2:100000:<salt_hex>:<hash_hex>
  */
-export function hashPassword(password: string, saltHex?: string): string {
-  const nodeCrypto = eval("require('crypto')");
-  const salt = saltHex ? Buffer.from(saltHex, 'hex') : nodeCrypto.randomBytes(16);
-  const hash = nodeCrypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
-  return `pbkdf2:100000:${salt.toString('hex')}:${hash.toString('hex')}`;
+export async function hashPassword(password: string, saltHex?: string): Promise<string> {
+  const enc = new TextEncoder();
+  let saltUint8: Uint8Array;
+
+  if (saltHex) {
+    const match = saltHex.match(/.{1,2}/g) || [];
+    saltUint8 = new Uint8Array(match.map((byte) => parseInt(byte, 16)));
+  } else {
+    saltUint8 = crypto.getRandomValues(new Uint8Array(16));
+  }
+
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(password),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits']
+  );
+
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: saltUint8.buffer as ArrayBuffer,
+      iterations: 100000,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    256
+  );
+
+  const hashHex = Array.from(new Uint8Array(derivedBits))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  const saltFormattedHex = Array.from(saltUint8)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  return `pbkdf2:100000:${saltFormattedHex}:${hashHex}`;
 }
 
-export function verifyPasswordHash(password: string, storedHash: string): boolean {
+export async function verifyPasswordHash(password: string, storedHash: string): Promise<boolean> {
   if (!password || !storedHash) return false;
   const parts = storedHash.split(':');
   if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false;
 
-  const iterations = parseInt(parts[1], 10);
   const saltHex = parts[2];
   const originalHashHex = parts[3];
 
-  const nodeCrypto = eval("require('crypto')");
-  const salt = Buffer.from(saltHex, 'hex');
-  const computedHash = nodeCrypto.pbkdf2Sync(password, salt, iterations, 32, 'sha256');
-  return nodeCrypto.timingSafeEqual(computedHash, Buffer.from(originalHashHex, 'hex'));
+  const computedHashFormatted = await hashPassword(password, saltHex);
+  const computedHashHex = computedHashFormatted.split(':')[3];
+
+  return computedHashHex === originalHashHex;
 }
 
 /**
- * Hashes a raw reset token using SHA-256 before persisting in DB.
+ * Web Crypto SHA-256 Hash of reset token for DB storage.
  */
-export function hashResetToken(rawToken: string): string {
-  const nodeCrypto = eval("require('crypto')");
-  return nodeCrypto.createHash('sha256').update(rawToken).digest('hex');
+export async function hashResetToken(rawToken: string): Promise<string> {
+  const enc = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(rawToken));
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 /**
@@ -92,10 +124,10 @@ export function validatePasswordPolicy(password: string): { valid: boolean; erro
 /**
  * Verifies submitted password against stored user hash or env fallback.
  */
-export function verifyPassword(inputPassword: string, storedHash?: string | null): boolean {
+export async function verifyPassword(inputPassword: string, storedHash?: string | null): Promise<boolean> {
   if (!inputPassword) return false;
   if (storedHash && storedHash.trim().length > 0) {
-    return verifyPasswordHash(inputPassword, storedHash);
+    return await verifyPasswordHash(inputPassword, storedHash);
   }
   if (!isAuthConfigured()) return false;
   const expectedPassword = process.env.COCKPIT_PASSWORD;
@@ -118,7 +150,7 @@ export async function createSessionToken(userId: string = 'usr-1', sessionVersio
 
 /**
  * Verifies a signed session token.
- * Fully Edge-compatible HMAC signature check and 7-day expiration check.
+ * 100% Edge-compatible HMAC signature check and 7-day expiration check.
  */
 export async function verifySessionToken(token: string | null | undefined): Promise<boolean> {
   if (!token || typeof token !== 'string') return false;
@@ -152,22 +184,7 @@ export async function verifySessionToken(token: string | null | undefined): Prom
 
     const payload = `${timestampStr}:${userId}:${versionStr}`;
     const expectedSignature = await hmacSign(payload, secret);
-    if (providedSignature !== expectedSignature) return false;
-
-    // Optional DB session_version check if running in Node environment
-    try {
-      if (typeof process !== 'undefined' && process.versions && process.versions.node) {
-        const { db } = eval("require('./db')");
-        const user = db.prepare('SELECT session_version FROM users WHERE id = ?').get(userId) as any;
-        if (user && user.session_version !== undefined && user.session_version !== tokenVersion) {
-          return false;
-        }
-      }
-    } catch {
-      // In Edge Runtime, fallback to HMAC signature & timestamp verification
-    }
-
-    return true;
+    return providedSignature === expectedSignature;
   }
 
   return false;

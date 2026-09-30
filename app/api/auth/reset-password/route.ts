@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     }
 
     // Hash new password using PBKDF2
-    const newPasswordHash = hashPassword(password);
+    const newPasswordHash = await hashPassword(password);
 
     // Update password, increment session_version to invalidate old sessions, and mark token used
     await DAL.resetUserPassword(

@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     const user = await DAL.getUserByEmail(userEmail);
 
     const storedHash = user?.passwordHash;
-    const isValid = verifyPassword(password, storedHash);
+    const isValid = await verifyPassword(password, storedHash);
 
     if (!password || !isValid) {
       return NextResponse.json(

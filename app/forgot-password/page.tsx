@@ -45,7 +45,7 @@ export default function ForgotPasswordPage() {
           </h1>
 
           <p className="text-xs text-cockpit-muted leading-relaxed">
-            Enter your email address and we'll help you reset your password.
+            Enter your email address and we&apos;ll help you reset your password.
           </p>
         </div>
 

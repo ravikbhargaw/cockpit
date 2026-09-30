@@ -449,7 +449,7 @@ export default function Founder180Page() {
 
         {history.length === 0 ? (
           <div className="text-center py-8 text-cockpit-muted text-xs md:text-sm border border-dashed border-cockpit-border rounded-xl">
-            No check-in history recorded yet. Complete today's check-in above to start logging.
+            No check-in history recorded yet. Complete today&apos;s check-in above to start logging.
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
