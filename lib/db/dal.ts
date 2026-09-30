@@ -62,15 +62,15 @@ export const DAL = {
     if (!company) return null;
 
     const relationship = await db.prepare('SELECT * FROM relationships WHERE company_id = ?').get(id) as any;
-    const contacts = db.prepare('SELECT * FROM contacts WHERE company_id = ? AND (is_archived IS NULL OR is_archived = 0) ORDER BY is_decision_maker DESC, created_at ASC').all(id) as any[];
-    const opportunities = db.prepare('SELECT * FROM opportunities WHERE company_id = ? AND (is_archived IS NULL OR is_archived = 0) ORDER BY created_at DESC').all(id) as any[];
+    const contacts = await db.prepare('SELECT * FROM contacts WHERE company_id = ? AND (is_archived IS NULL OR is_archived = 0) ORDER BY is_decision_maker DESC, created_at ASC').all(id) as any[];
+    const opportunities = await db.prepare('SELECT * FROM opportunities WHERE company_id = ? AND (is_archived IS NULL OR is_archived = 0) ORDER BY created_at DESC').all(id) as any[];
     const interactions = await db.prepare('SELECT * FROM interactions WHERE company_id = ? ORDER BY date DESC').all(id) as any[];
     const research = await db.prepare('SELECT * FROM research_notes WHERE company_id = ?').get(id) as any;
     const intelligence = await db.prepare('SELECT * FROM intelligence_notes WHERE company_id = ?').get(id) as any;
     const projectLinks = await db.prepare('SELECT * FROM project_links WHERE company_id = ?').all(id) as any[];
 
     // Fetch linked research candidate data if available
-    const candidateRow = db.prepare("SELECT * FROM research_candidates WHERE created_company_id = ? OR (domain IS NOT NULL AND domain != '' AND domain = ?)").get(id, company.domain || '') as any;
+    const candidateRow = await db.prepare("SELECT * FROM research_candidates WHERE created_company_id = ? OR (domain IS NOT NULL AND domain != '' AND domain = ?)").get(id, company.domain || '') as any;
     let candidateData = null;
     if (candidateRow) {
       candidateData = await DAL.getCandidateById(candidateRow.id);
@@ -252,7 +252,7 @@ export const DAL = {
       );
     } else {
       const id = `setup-${Date.now()}`;
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO research_setup (id, target_company_type, geography, industry, company_size, services, keywords, website, notes, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
@@ -445,7 +445,7 @@ export const DAL = {
     const criteriaJson = typeof criteria === 'string' ? criteria : JSON.stringify(criteria || {});
     const activeModel = modelName || process.env.RESEARCH_AI_MODEL || 'gpt-5.6-luna';
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO research_jobs (
         id, original_instruction, parsed_criteria, status, created_at,
         candidate_count, qualified_count, final_shortlist_count, estimated_cost,
@@ -497,7 +497,7 @@ export const DAL = {
     const now = new Date().toISOString();
     const completedAt = (status === 'COMPLETED' || status === 'READY_FOR_REVIEW' || status === 'FAILED') ? now : null;
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE research_jobs SET
         status = ?,
         status_message = COALESCE(?, status_message),
@@ -618,7 +618,7 @@ export const DAL = {
     const evidenceLimitations = data.evidenceLimitations || '';
     const founderInvestigationFlags = data.founderInvestigationFlags ? JSON.stringify(data.founderInvestigationFlags) : null;
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO research_candidates (
         id, name, website, domain, location, company_type, industry, industry_segment, city,
         description, source, source_url, discovered_date, summary, research_status, verification_status,
@@ -643,7 +643,7 @@ export const DAL = {
     if (data.initialNote || data.notes) {
       const noteText = data.initialNote || data.notes;
       const noteId = `cnote-${Date.now()}`;
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO candidate_notes (id, candidate_id, note, date, source, source_url, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(noteId, id, noteText, dateStr, source, sourceUrl, now);
@@ -711,7 +711,7 @@ export const DAL = {
     const now = new Date().toISOString();
     const dateStr = noteData.date || now.split('T')[0];
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO candidate_notes (id, candidate_id, note, date, source, source_url, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(noteId, candidateId, noteData.note, dateStr, noteData.source || '', noteData.sourceUrl || '', now);
@@ -750,7 +750,7 @@ export const DAL = {
       const words = candidate.companyName.trim().split(' ').filter(Boolean);
       const initials = words.map((w: string) => w[0]).join('').substring(0, 2).toUpperCase() || 'CO';
 
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO companies (id, name, domain, type, city, employee_count, website, logo_initials, year_established, is_archived, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
       `).run(
@@ -769,7 +769,7 @@ export const DAL = {
 
       // Create Relationship record for Company
       const relId = `rel-${Date.now()}`;
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO relationships (
           id, company_id, status, temperature, owner, first_contact_date,
           last_meaningful_interaction_date, days_inactive, next_action, next_action_date,
@@ -809,7 +809,7 @@ export const DAL = {
     const sourcesList = candidate.source ? [{ title: candidate.source, url: candidate.sourceUrl || '' }] : [];
 
     if (!existingResNote) {
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO research_notes (id, company_id, market_segment, strengths, growth_signals, sources, last_updated)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(
@@ -837,13 +837,13 @@ export const DAL = {
   async searchEntities(queryStr: string) {
     const q = `%${queryStr.trim()}%`;
 
-    const companies = db.prepare(`
+    const companies = await db.prepare(`
       SELECT id, name, type, city, domain FROM companies
       WHERE is_archived = 0 AND (name LIKE ? OR type LIKE ? OR city LIKE ? OR domain LIKE ?)
       LIMIT 5
     `).all(q, q, q, q) as any[];
 
-    const contacts = db.prepare(`
+    const contacts = await db.prepare(`
       SELECT cnt.id, cnt.name, cnt.role, cnt.email, cnt.company_id, comp.name as company_name
       FROM contacts cnt
       JOIN companies comp ON cnt.company_id = comp.id
@@ -852,7 +852,7 @@ export const DAL = {
       LIMIT 5
     `).all(q, q, q, q) as any[];
 
-    const opportunities = db.prepare(`
+    const opportunities = await db.prepare(`
       SELECT opp.id, opp.title, opp.stage, opp.estimated_value_amount, opp.company_id, comp.name as company_name
       FROM opportunities opp
       JOIN companies comp ON opp.company_id = comp.id
@@ -861,7 +861,7 @@ export const DAL = {
       LIMIT 5
     `).all(q, q) as any[];
 
-    const interactions = db.prepare(`
+    const interactions = await db.prepare(`
       SELECT i.id, i.summary, i.channel, i.date, i.company_id, comp.name as company_name
       FROM interactions i
       JOIN companies comp ON i.company_id = comp.id
@@ -945,7 +945,7 @@ export const DAL = {
     const words = name.split(' ').filter(Boolean);
     const initials = words.map((w: string) => w[0]).join('').substring(0, 2).toUpperCase() || 'CO';
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO companies (id, name, domain, type, city, employee_count, website, logo_initials, year_established, is_archived, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     `).run(
@@ -953,7 +953,7 @@ export const DAL = {
     );
 
     const relId = `rel-${Date.now()}`;
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO relationships (
         id, company_id, status, temperature, owner, first_contact_date,
         last_meaningful_interaction_date, days_inactive, next_action, next_action_date,
@@ -991,7 +991,7 @@ export const DAL = {
     `).run(name, website, domain, type, city, employeeCount, now, id);
 
     if (data.notes !== undefined || data.relationshipNotes !== undefined || data.status !== undefined || data.temperature !== undefined || data.owner !== undefined) {
-      DAL.updateRelationship(id, {
+      await DAL.updateRelationship(id, {
         relationshipNotes: data.notes !== undefined ? data.notes : data.relationshipNotes,
         status: data.status,
         temperature: data.temperature,
@@ -1009,7 +1009,7 @@ export const DAL = {
     if (!existing) {
       const relId = `rel-${Date.now()}`;
       const today = now.split('T')[0];
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO relationships (
           id, company_id, status, temperature, owner, first_contact_date,
           last_meaningful_interaction_date, days_inactive, next_action, next_action_date,
@@ -1046,7 +1046,7 @@ export const DAL = {
     const id = `cnt-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
     const now = new Date().toISOString();
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO contacts (
         id, company_id, name, role, email, phone, linkedin, notes, is_decision_maker, is_archived, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
@@ -1098,7 +1098,7 @@ export const DAL = {
     const now = new Date().toISOString();
     const rawVal = Number(data.estimatedValueAmount || data.estimatedValue || 0);
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO opportunities (
         id, company_id, title, stage, estimated_value_formatted, estimated_value_amount,
         next_action, next_action_date, is_archived, created_at, updated_at
@@ -1194,7 +1194,7 @@ export const DAL = {
         updated_at=excluded.updated_at
     `);
 
-    stmt.run(
+    await stmt.run(
       id,
       dateStr,
       data.workCompleted ? 1 : 0,

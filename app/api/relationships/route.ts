@@ -11,6 +11,8 @@ function parseJsonField(val: any): any {
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { DAL } from '@/lib/db/dal';
+import { getCurrentUserFromRequest } from '@/lib/auth';
 
 export async function GET(request: Request) {
   try {
@@ -60,7 +62,6 @@ export async function PUT(request: Request) {
     }
 
     if (owner !== undefined) {
-      const { getCurrentUserFromRequest } = require('@/lib/auth');
       const currentUser = await getCurrentUserFromRequest(request);
       const existing = await db.prepare('SELECT owner FROM relationships WHERE company_id = ?').get(companyId) as any;
       if (existing && existing.owner !== owner) {
@@ -70,7 +71,6 @@ export async function PUT(request: Request) {
       }
     }
 
-    const { DAL } = require('@/lib/db/dal');
     const updated = await DAL.updateRelationship(companyId, body);
     return NextResponse.json(updated);
   } catch (error: any) {
@@ -88,7 +88,6 @@ export async function PATCH(request: Request) {
     }
 
     if (owner !== undefined) {
-      const { getCurrentUserFromRequest } = require('@/lib/auth');
       const currentUser = await getCurrentUserFromRequest(request);
       const existing = await db.prepare('SELECT owner FROM relationships WHERE company_id = ?').get(companyId) as any;
       if (existing && existing.owner !== owner) {
@@ -98,7 +97,6 @@ export async function PATCH(request: Request) {
       }
     }
 
-    const { DAL } = require('@/lib/db/dal');
     const updated = await DAL.updateRelationship(companyId, body);
     return NextResponse.json(updated);
   } catch (error: any) {

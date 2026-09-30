@@ -2,6 +2,7 @@ export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { DAL } from '@/lib/db/dal';
 import { db } from '@/lib/db';
+import { getCurrentUserFromRequest } from '@/lib/auth';
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -24,7 +25,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const { id } = params;
     const body = await request.json();
     if (body.owner !== undefined) {
-      const { getCurrentUserFromRequest } = require('@/lib/auth');
       const currentUser = await getCurrentUserFromRequest(request);
       const existing = await db.prepare('SELECT owner FROM relationships WHERE company_id = ?').get(id) as any;
       if (existing && existing.owner !== body.owner) {
@@ -45,7 +45,6 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const { id } = params;
     const body = await request.json();
     if (body.owner !== undefined) {
-      const { getCurrentUserFromRequest } = require('@/lib/auth');
       const currentUser = await getCurrentUserFromRequest(request);
       const existing = await db.prepare('SELECT owner FROM relationships WHERE company_id = ?').get(id) as any;
       if (existing && existing.owner !== body.owner) {

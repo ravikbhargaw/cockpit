@@ -11,6 +11,8 @@ function parseJsonField(val: any): any {
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { DAL } from '@/lib/db/dal';
+import { getCurrentUserFromRequest } from '@/lib/auth';
 
 export async function GET(request: Request) {
   try {
@@ -77,7 +79,6 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { getCurrentUserFromRequest } = require('@/lib/auth');
     const currentUser = await getCurrentUserFromRequest(request);
 
     const body = await request.json();
@@ -85,7 +86,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Company name is required' }, { status: 400 });
     }
 
-    const { DAL } = require('@/lib/db/dal');
     const result = await DAL.createCompany(body, currentUser);
     return NextResponse.json(result);
   } catch (error: any) {
