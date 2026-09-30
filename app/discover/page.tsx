@@ -111,6 +111,18 @@ export default function DiscoverPage() {
     fetchJobs();
   }, [fetchJobs]);
 
+  // Open candidate detail modal automatically if candidateId query param is present
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const candId = params.get('candidateId');
+      if (candId) {
+        setSelectedCandidateId(candId);
+        setIsDetailModalOpen(true);
+      }
+    }
+  }, []);
+
   const handleJobStarted = useCallback((jobId: string) => {
     setActiveJobId(jobId);
     fetchJobs();

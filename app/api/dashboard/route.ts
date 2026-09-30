@@ -1,7 +1,9 @@
 export const runtime = 'edge';
+
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { formatINR } from '@/lib/utils';
+import { calculateFounderAttention } from '@/lib/priorityEngine';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,14 +11,19 @@ export async function GET() {
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    // Active Partners Count
+    // 1. Calculate Founder Attention & Priorities Engine
+    const { briefing, priorities, upNext } = await calculateFounderAttention(today);
+
+    // 2. Canonical Active Partners Count
     const activePartnersRow = (await db.prepare(`
       SELECT COUNT(*) as count FROM relationships r
       JOIN companies c ON r.company_id = c.id
       WHERE c.is_archived = 0 AND r.status IN ('Active Partner', 'Repeat Partner', 'Strategic Partner')
     `).get()) as { count: number };
 
-    // Open Opportunities & Pipeline Value
+    const activePartnersCount = activePartnersRow ? activePartnersRow.count : 0;
+
+    // 3. Open Opportunities & Pipeline Value
     const oppsRow = (await db.prepare(`
       SELECT COUNT(*) as count, COALESCE(SUM(o.estimated_value_amount), 0) as total_val
       FROM opportunities o
@@ -24,21 +31,21 @@ export async function GET() {
       WHERE c.is_archived = 0 AND (o.is_archived IS NULL OR o.is_archived = 0) AND o.stage NOT IN ('Closed Won', 'Closed Lost')
     `).get()) as { count: number; total_val: number };
 
-    // Follow-ups Due Today
+    // 4. Follow-ups Due Today
     const dueTodayRow = (await db.prepare(`
       SELECT COUNT(*) as count FROM relationships r
       JOIN companies c ON r.company_id = c.id
       WHERE c.is_archived = 0 AND r.next_action_date = ? AND (r.next_action NOT LIKE '%No further action%' OR r.next_action IS NULL)
     `).get(today)) as { count: number };
 
-    // Overdue Follow-ups
+    // 5. Overdue Follow-ups
     const overdueRow = (await db.prepare(`
       SELECT COUNT(*) as count FROM relationships r
       JOIN companies c ON r.company_id = c.id
       WHERE c.is_archived = 0 AND r.next_action_date IS NOT NULL AND r.next_action_date != '' AND r.next_action_date < ? AND (r.next_action NOT LIKE '%No further action%' OR r.next_action IS NULL)
     `).get(today)) as { count: number };
 
-    // Stale Relationships (inactive >= 20 days)
+    // 6. Stale Relationships (inactive >= 20 days)
     const staleRow = (await db.prepare(`
       SELECT COUNT(*) as count FROM relationships r
       JOIN companies c ON r.company_id = c.id
@@ -46,102 +53,39 @@ export async function GET() {
     `).get()) as { count: number };
 
     // Format pipeline total value using formatINR
-    const totalVal = oppsRow.total_val;
+    const totalVal = oppsRow ? oppsRow.total_val : 0;
     const pipelineValueFormatted = formatINR(totalVal);
 
-    // Today's Priorities (Relationship follow-ups with valid dates)
-    const priorityRels = (await db.prepare(`
-      SELECT r.*, c.name as company_name
-      FROM relationships r
-      JOIN companies c ON r.company_id = c.id
-      WHERE c.is_archived = 0
-        AND r.next_action_date IS NOT NULL
-        AND r.next_action_date != ''
-        AND r.next_action_date <= ?
-        AND (r.next_action NOT LIKE '%No further action%' OR r.next_action IS NULL)
-      ORDER BY r.next_action_date ASC
-      LIMIT 5
-    `).all(today)) as any[];
-
-    const priorities = priorityRels.map((p) => ({
-      id: `prio-rel-${p.id}`,
-      companyId: p.company_id,
-      companyName: p.company_name,
-      reason: p.days_inactive >= 20
-        ? `${p.days_inactive} days since last interaction. Follow-up required.`
-        : `Action scheduled for ${p.next_action_date}`,
-      priority: p.next_action_date < today ? 'High' : 'Medium',
-      suggestedAction: p.next_action || 'Review Account',
-      dueText: p.next_action_date === today ? 'Due Today' : p.next_action_date < today ? 'Overdue' : p.next_action_date,
-    }));
-
-    // Add Opportunity Next Actions to Today Priorities
-    const oppPriorities = (await db.prepare(`
-      SELECT o.*, c.name as company_name
-      FROM opportunities o
-      JOIN companies c ON o.company_id = c.id
-      WHERE c.is_archived = 0
-        AND (o.is_archived IS NULL OR o.is_archived = 0)
-        AND o.stage NOT IN ('Closed Won', 'Closed Lost')
-        AND o.next_action_date IS NOT NULL
-        AND o.next_action_date != ''
-        AND o.next_action_date <= ?
-      ORDER BY o.next_action_date ASC
-      LIMIT 5
-    `).all(today)) as any[];
-
-    for (const opp of oppPriorities) {
-      priorities.push({
-        id: `prio-opp-${opp.id}`,
-        companyId: opp.company_id,
-        companyName: `${opp.company_name} — ${opp.title}`,
-        reason: `Opportunity stage: ${opp.stage} (${formatINR(opp.estimated_value_amount || 0)})`,
-        priority: opp.next_action_date < today ? 'High' : 'Medium',
-        suggestedAction: opp.next_action || 'Progress Opportunity',
-        dueText: opp.next_action_date === today ? 'Due Today' : opp.next_action_date < today ? 'Overdue' : opp.next_action_date,
-      });
-    }
-
-    // Check for Research Candidates READY_FOR_REVIEW
-    const readyCandidateRow = (await db.prepare("SELECT COUNT(*) as count FROM research_candidates WHERE research_status = 'READY_FOR_REVIEW'").get()) as { count: number };
-    if (readyCandidateRow && readyCandidateRow.count > 0) {
-      priorities.unshift({
-        id: 'prio-ready-candidates',
-        companyId: '',
-        companyName: 'Discover Research Workbench',
-        reason: `Review ${readyCandidateRow.count} candidate(s) ready for founder qualification & approval`,
-        priority: 'High',
-        suggestedAction: 'Review Candidates',
-        dueText: 'Action Required',
-      });
-    }
-
-    // Relationship Attention Items
-    const attentionRels = await db.prepare(`
+    // 7. Relationship Attention Items (Accounts requiring proactive touchpoints)
+    const attentionRels = (await db.prepare(`
       SELECT r.*, c.name as company_name, c.type as company_type
       FROM relationships r
       JOIN companies c ON r.company_id = c.id
       WHERE c.is_archived = 0
       ORDER BY r.days_inactive DESC, r.next_action_date ASC
-      LIMIT 3
-    `).all() as any[];
+      LIMIT 4
+    `).all()) as any[];
 
     return NextResponse.json({
+      briefing,
       kpis: {
-        activePartners: activePartnersRow.count,
-        openOpportunities: oppsRow.count,
+        activePartners: activePartnersCount,
+        openOpportunities: oppsRow ? oppsRow.count : 0,
         pipelineValueFormatted,
-        followupsDue: dueTodayRow.count,
-        overdueFollowups: overdueRow.count,
-        staleRelationships: staleRow.count,
+        followupsDue: dueTodayRow ? dueTodayRow.count : 0,
+        overdueFollowups: overdueRow ? overdueRow.count : 0,
+        staleRelationships: staleRow ? staleRow.count : 0,
       },
       partnerMomentum: {
-        activeCount: activePartnersRow.count,
+        activeCount: activePartnersCount,
         targetCount: 5,
-        headline: `${activePartnersRow.count} / 5 Active Partners`,
-        subtext: "Build your first five strategic partner relationships.",
+        headline: `${activePartnersCount} / 5 Active Partners`,
+        subtext: activePartnersCount === 0
+          ? "Build your first five strategic partner relationships."
+          : `${Math.max(0, 5 - activePartnersCount)} more to reach your 5 active partner milestone.`,
       },
       priorities,
+      upNext,
       attention: attentionRels.map(r => ({
         id: r.id,
         companyId: r.company_id,
@@ -153,7 +97,8 @@ export async function GET() {
         temperature: r.temperature,
       })),
     });
-  } catch (error) {
+  } catch (error: any) {
+    console.error('Error loading dashboard data:', error);
     return NextResponse.json({ error: 'Failed to fetch dashboard metrics' }, { status: 500 });
   }
 }

@@ -3,7 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Sparkles, Database } from 'lucide-react';
 
-export const GreetingBanner: React.FC = () => {
+interface GreetingBannerProps {
+  subtitle?: string;
+}
+
+export const GreetingBanner: React.FC<GreetingBannerProps> = ({ subtitle }) => {
   const [formattedDate, setFormattedDate] = useState<string>('');
 
   useEffect(() => {
@@ -17,6 +21,8 @@ export const GreetingBanner: React.FC = () => {
     setFormattedDate(now.toLocaleDateString('en-US', options));
   }, []);
 
+  const displaySubtitle = subtitle || "Here's what deserves your attention today.";
+
   return (
     <div className="cockpit-panel p-6 bg-gradient-to-r from-cockpit-surface via-cockpit-surface to-meaven-blue/10 relative overflow-hidden">
       <div className="absolute right-0 top-0 translate-x-8 -translate-y-8 w-64 h-64 bg-meaven-blue/10 rounded-full blur-3xl pointer-events-none" />
@@ -28,14 +34,14 @@ export const GreetingBanner: React.FC = () => {
               <Sparkles className="w-3.5 h-3.5" /> Founder Daily Briefing
             </span>
             <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded flex items-center gap-1">
-              <Database className="w-3 h-3" /> SQLite Active
+              <Database className="w-3 h-3" /> Live Cockpit Data
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-100 tracking-tight">
             Good morning, Ravi.
           </h1>
-          <p className="text-sm text-cockpit-muted mt-1 font-medium">
-            Here&apos;s what deserves your attention today.
+          <p className="text-sm text-slate-300 mt-1 font-medium">
+            {displaySubtitle}
           </p>
         </div>
 

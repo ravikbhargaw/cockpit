@@ -33,7 +33,7 @@ export default function TodayDashboard() {
   return (
     <div className="space-y-6">
       {/* 1. Greeting Banner */}
-      <GreetingBanner />
+      <GreetingBanner subtitle={data?.briefing?.subtitle} />
 
       {/* 2. Top Row: Partner Momentum & Today's Priorities */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -46,7 +46,7 @@ export default function TodayDashboard() {
           />
         </div>
         <div className="lg:col-span-2">
-          <TodayPriorities priorities={data?.priorities || []} />
+          <TodayPriorities priorities={data?.priorities || []} upNext={data?.upNext || []} />
         </div>
       </div>
 
