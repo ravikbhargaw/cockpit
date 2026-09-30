@@ -1,6 +1,3 @@
-import fs from 'fs';
-import path from 'path';
-
 export interface PasswordResetPayload {
   email: string;
   resetUrl: string;
@@ -13,8 +10,8 @@ export interface IPasswordResetDelivery {
 
 /**
  * Local Development Password Reset Delivery:
- * - Logs reset URL to server stdout
- * - Appends delivery payload to data/dev_email_outbox.log for local testing
+ * - Logs reset URL to server stdout (works natively in Edge & Cloudflare Workers)
+ * - Safely appends delivery payload to data/dev_email_outbox.log when running in Node.js
  */
 export class LocalPasswordResetDelivery implements IPasswordResetDelivery {
   async sendResetLink(payload: PasswordResetPayload): Promise<boolean> {
@@ -29,12 +26,16 @@ export class LocalPasswordResetDelivery implements IPasswordResetDelivery {
     console.log(`Expires At: ${payload.tokenExpiresAt}`);
     console.log('==================================================\n');
 
-    // 2. Persist to local outbox log
+    // 2. Safely persist to local outbox log when running in Node.js runtime
     try {
-      const outboxPath = path.join(process.cwd(), 'data', 'dev_email_outbox.log');
-      fs.appendFileSync(outboxPath, logLine, 'utf8');
+      if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+        const fs = eval("require('fs')");
+        const path = eval("require('path')");
+        const outboxPath = path.join(process.cwd(), 'data', 'dev_email_outbox.log');
+        fs.appendFileSync(outboxPath, logLine, 'utf8');
+      }
     } catch (err) {
-      console.error('Failed to write to dev_email_outbox.log:', err);
+      // Ignore filesystem write errors in edge/worker environments
     }
 
     return true;
