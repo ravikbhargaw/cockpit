@@ -1,3 +1,5 @@
+import { Pool } from '@neondatabase/serverless';
+
 let dbInstance: any = null;
 
 function getDB() {
@@ -5,7 +7,6 @@ function getDB() {
   if (connectionString.startsWith('postgres://') || connectionString.startsWith('postgresql://')) {
     if (dbInstance && dbInstance._isPg) return dbInstance;
     try {
-      const { Pool } = require('@neondatabase/serverless');
       const pool = new Pool({
         connectionString,
         ssl: { rejectUnauthorized: false },
