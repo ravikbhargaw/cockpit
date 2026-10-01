@@ -148,9 +148,12 @@ export default function DiscoverPage() {
       });
       if (res.ok) {
         fetchCandidates();
+      } else {
+        const errText = await res.text().catch(() => '');
+        alert(`Failed to update status (${res.status}): ${errText.substring(0, 100)}`);
       }
-    } catch {
-      alert('Failed to update status');
+    } catch (err: any) {
+      alert(`Failed to update status: ${err?.message || err}`);
     }
   };
 
