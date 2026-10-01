@@ -1,4 +1,8 @@
-import { neon } from '@neondatabase/serverless';
+import { Pool, neonConfig } from '@neondatabase/serverless';
+
+// Force all Pool queries to use HTTP fetch instead of WebSocket.
+// This is required for Cloudflare Edge Workers which don't support WebSocket natively.
+neonConfig.poolQueryViaFetch = true;
 
 let dbInstance: any = null;
 
@@ -7,9 +11,7 @@ function getDB() {
   if (connectionString.startsWith('postgres://') || connectionString.startsWith('postgresql://')) {
     if (dbInstance && dbInstance._isPg) return dbInstance;
     try {
-      // Use neon() HTTP client — works in Cloudflare Edge Workers without WebSocket setup.
-      // Pool uses WebSockets which crash Cloudflare Workers unless specially configured.
-      const sqlClient = neon(connectionString);
+      const pool = new Pool({ connectionString });
 
       const cleanParams = (params: any[]) =>
         params.map((p) => (p === undefined ? null : p));
@@ -24,8 +26,8 @@ function getDB() {
           return {
             async all(...params: any[]) {
               try {
-                const rows = await sqlClient(pgSql, cleanParams(params));
-                return rows || [];
+                const res = await pool.query(pgSql, cleanParams(params));
+                return res.rows || [];
               } catch (err) {
                 console.error('PostgreSQL query error (all):', err);
                 return [];
@@ -33,8 +35,8 @@ function getDB() {
             },
             async get(...params: any[]) {
               try {
-                const rows = await sqlClient(pgSql, cleanParams(params));
-                return (rows && (rows as any[])[0]) || null;
+                const res = await pool.query(pgSql, cleanParams(params));
+                return (res.rows && res.rows[0]) || null;
               } catch (err) {
                 console.error('PostgreSQL query error (get):', err);
                 return null;
@@ -42,8 +44,8 @@ function getDB() {
             },
             async run(...params: any[]) {
               try {
-                await sqlClient(pgSql, cleanParams(params));
-                return { changes: 1 };
+                const res = await pool.query(pgSql, cleanParams(params));
+                return { changes: res.rowCount || 1 };
               } catch (err) {
                 console.error('PostgreSQL query error (run):', err);
                 return { changes: 0 };
@@ -53,14 +55,14 @@ function getDB() {
         },
         exec(sql: string) {
           try {
-            sqlClient(sql);
+            pool.query(sql);
           } catch {}
         },
         pragma(sql: string) {},
       };
       return dbInstance;
     } catch (err) {
-      console.error('Error instantiating Neon HTTP client:', err);
+      console.error('Error instantiating Neon pool:', err);
     }
   }
 
