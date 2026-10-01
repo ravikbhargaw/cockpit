@@ -1,4 +1,3 @@
-export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import { DAL } from '@/lib/db/dal';
 import { discoverCandidates } from '@/lib/ai/discovery';
