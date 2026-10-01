@@ -18,10 +18,13 @@ function getDB() {
           let paramIdx = 1;
           pgSql = pgSql.replace(/\?/g, () => `$${paramIdx++}`);
 
+          const cleanParams = (params: any[]) =>
+            params.map((p) => (p === undefined ? null : p));
+
           return {
             async all(...params: any[]) {
               try {
-                const res = await pool.query(pgSql, params);
+                const res = await pool.query(pgSql, cleanParams(params));
                 return res.rows || [];
               } catch (err) {
                 console.error('PostgreSQL query error (all):', err);
@@ -30,7 +33,7 @@ function getDB() {
             },
             async get(...params: any[]) {
               try {
-                const res = await pool.query(pgSql, params);
+                const res = await pool.query(pgSql, cleanParams(params));
                 return (res.rows && res.rows[0]) || null;
               } catch (err) {
                 console.error('PostgreSQL query error (get):', err);
@@ -39,7 +42,7 @@ function getDB() {
             },
             async run(...params: any[]) {
               try {
-                const res = await pool.query(pgSql, params);
+                const res = await pool.query(pgSql, cleanParams(params));
                 return { changes: res.rowCount || 1 };
               } catch (err) {
                 console.error('PostgreSQL query error (run):', err);
