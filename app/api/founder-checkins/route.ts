@@ -61,10 +61,10 @@ export async function POST(request: Request) {
       stats,
       history,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving 180-Day Founder check-in:', error);
     return NextResponse.json(
-      { error: 'Failed to save founder check-in' },
+      { error: error?.message || 'Failed to save founder check-in' },
       { status: 500 }
     );
   }

@@ -1178,6 +1178,22 @@ export const DAL = {
     bodyCompleted: boolean;
     sleepCompleted: boolean;
   }) {
+    // Ensure table exists in PostgreSQL / SQLite
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS founder_checkins (
+        id VARCHAR(255) PRIMARY KEY,
+        date VARCHAR(50) UNIQUE NOT NULL,
+        work_completed INTEGER DEFAULT 0,
+        sales_completed INTEGER DEFAULT 0,
+        body_completed INTEGER DEFAULT 0,
+        sleep_completed INTEGER DEFAULT 0,
+        calculated_score INTEGER DEFAULT 0,
+        calculated_showed_up INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `).run();
+
     const dateStr = data.date;
     const { score, showedUp } = calculateCheckinScore(
       data.workCompleted,

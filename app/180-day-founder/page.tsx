@@ -93,16 +93,20 @@ export default function Founder180Page() {
         }),
       });
 
-      if (!res.ok) throw new Error('Failed to save');
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || 'Failed to save');
+      }
       const data = await res.json();
 
       setStats(data.stats);
       setHistory(data.history || []);
       setSaveMessage('Saved');
       setTimeout(() => setSaveMessage(''), 2000);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving check-in:', err);
-      setSaveMessage('Error saving');
+      setSaveMessage(err?.message ? `Error: ${err.message}` : 'Error saving');
+      setTimeout(() => setSaveMessage(''), 4000);
     } finally {
       setSaving(false);
     }
