@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Activity as ActivityIcon, CheckCircle2, ShieldCheck, Plus } from 'lucide-react';
 import { InteractionModal } from '@/components/common/InteractionModal';
+import { formatDisplayDate } from '@/lib/utils';
 
 export default function ActivityPage() {
   const [interactions, setInteractions] = useState<any[]>([]);
@@ -69,7 +70,7 @@ export default function ActivityPage() {
                   <h3 className="text-base font-bold text-slate-100">{int.companyName || 'Partner'}</h3>
                   <span className="text-xs text-cockpit-muted">({int.contactName})</span>
                 </div>
-                <span className="text-xs font-mono text-cockpit-subtle">{int.date}</span>
+                <span className="text-xs font-mono text-cockpit-subtle">{formatDisplayDate(int.date)}</span>
               </div>
 
               <p className="text-xs text-slate-200 leading-relaxed mb-4">
@@ -99,7 +100,7 @@ export default function ActivityPage() {
                   </span>
                 </div>
                 {!int.noFurtherActionRequired && (
-                  <span className="text-slate-300">Target Date: {int.nextActionDate}</span>
+                  <span className="text-slate-300">Target Date: {formatDisplayDate(int.nextActionDate, 'N/A')}</span>
                 )}
               </div>
             </div>

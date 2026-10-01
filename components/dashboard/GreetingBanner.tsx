@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Calendar, Sparkles, Database } from 'lucide-react';
+import { formatDisplayDate } from '@/lib/utils';
 
 interface GreetingBannerProps {
   subtitle?: string;
@@ -12,13 +13,8 @@ export const GreetingBanner: React.FC<GreetingBannerProps> = ({ subtitle }) => {
 
   useEffect(() => {
     const now = new Date();
-    const options: Intl.DateTimeFormatOptions = {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    };
-    setFormattedDate(now.toLocaleDateString('en-US', options));
+    const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
+    setFormattedDate(`${weekday}, ${formatDisplayDate(now)}`);
   }, []);
 
   const displaySubtitle = subtitle || "Here's what deserves your attention today.";

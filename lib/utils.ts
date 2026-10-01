@@ -32,15 +32,56 @@ export function normalizeDomain(urlOrDomain: string | null | undefined): string 
   return str.trim();
 }
 
+export function formatDisplayDate(dateInput: string | Date | number | null | undefined, fallback: string = ''): string {
+  if (dateInput === null || dateInput === undefined) return fallback;
+
+  if (typeof dateInput === 'string') {
+    const trimmed = dateInput.trim();
+    if (!trimmed) return fallback;
+
+    // Already in DD-MM-YYYY format
+    if (/^\d{2}-\d{2}-\d{4}$/.test(trimmed)) {
+      return trimmed;
+    }
+
+    // Match YYYY-MM-DD or YYYY/MM/DD (with optional time component)
+    const ymdMatch = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s].*)?$/.exec(trimmed);
+    if (ymdMatch) {
+      const [, y, m, d] = ymdMatch;
+      const dd = d.padStart(2, '0');
+      const mm = m.padStart(2, '0');
+      return `${dd}-${mm}-${y}`;
+    }
+
+    // Match MM/DD/YYYY or DD/MM/YYYY if any
+    const slashMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed);
+    if (slashMatch) {
+      const [, p1, p2, y] = slashMatch;
+      const dd = p1.padStart(2, '0');
+      const mm = p2.padStart(2, '0');
+      return `${dd}-${mm}-${y}`;
+    }
+  }
+
+  try {
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (isNaN(d.getTime())) return typeof dateInput === 'string' ? dateInput : fallback;
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  } catch {
+    return typeof dateInput === 'string' ? dateInput : fallback;
+  }
+}
+
 export function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return 'N/A';
   try {
     const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    const day = d.getDate();
-    const month = d.toLocaleString('en-US', { month: 'short' });
-    const year = d.getFullYear();
-    const datePart = `${day} ${month} ${year}`;
+    if (isNaN(d.getTime())) return formatDisplayDate(dateStr, 'N/A');
+
+    const datePart = formatDisplayDate(dateStr, 'N/A');
     const hasTime = dateStr.includes('T') || dateStr.includes(':');
     if (hasTime) {
       const timePart = d.toLocaleTimeString('en-US', {
@@ -52,7 +93,7 @@ export function formatDateTime(dateStr: string | null | undefined): string {
     }
     return datePart;
   } catch {
-    return dateStr;
+    return formatDisplayDate(dateStr, 'N/A');
   }
 }
 

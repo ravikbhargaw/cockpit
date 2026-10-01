@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { FounderCheckin, FounderStats } from '@/types';
 import { FOUNDER_EXPERIMENT_START_DATE } from '@/lib/founder180';
+import { formatDisplayDate } from '@/lib/utils';
 
 export default function Founder180Page() {
   const getTodayStr = () => new Date().toISOString().split('T')[0];
@@ -151,12 +152,8 @@ export default function Founder180Page() {
 
   const formatDateLabel = (dateStr: string) => {
     const d = new Date(`${dateStr}T00:00:00`);
-    return d.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
+    return `${weekday}, ${formatDisplayDate(dateStr)}`;
   };
 
   return (
@@ -178,7 +175,7 @@ export default function Founder180Page() {
         {/* Start Date Indicator */}
         <div className="flex items-center gap-2 bg-cockpit-surface border border-cockpit-border px-3 py-1.5 rounded-lg text-xs text-cockpit-muted self-start md:self-auto">
           <Calendar className="w-3.5 h-3.5 text-meaven-blue" />
-          <span>Experiment Start: <strong className="text-slate-200">{FOUNDER_EXPERIMENT_START_DATE}</strong></span>
+          <span>Experiment Start: <strong className="text-slate-200">{formatDisplayDate(FOUNDER_EXPERIMENT_START_DATE)}</strong></span>
         </div>
       </div>
 

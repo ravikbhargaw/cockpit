@@ -24,7 +24,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { ResearchCandidate, CandidateNote, BusinessSignals, ResearchStatus, PriorityLevel, VerificationStatus, PartnerOpportunitySignal } from '@/types';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, formatDisplayDate } from '@/lib/utils';
 import { printResearchDossier } from '@/lib/exportPdf';
 
 interface ResearchDetailModalProps {
@@ -1030,7 +1030,7 @@ export const ResearchDetailModal: React.FC<ResearchDetailModalProps> = ({
                       <div key={note.id} className="p-3 bg-cockpit-card border border-cockpit-border rounded space-y-1">
                         <div className="flex items-center justify-between text-[11px] font-mono">
                           <span className="text-meaven-light font-semibold flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-meaven-blue" /> {note.date}
+                            <Clock className="w-3 h-3 text-meaven-blue" /> {formatDisplayDate(note.date)}
                           </span>
                           {note.source && (
                             <span className="text-cockpit-subtle">Source: {note.source}</span>

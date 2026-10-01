@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Sparkles, X, ArrowRight, Building2, Users, Target, Activity as ActivityIcon, Database, Command } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { formatDisplayDate } from '@/lib/utils';
 
 interface AICommandBarProps {
   isOpen: boolean;
@@ -237,7 +238,7 @@ export const AICommandBar: React.FC<AICommandBarProps> = ({ isOpen, onClose }) =
                         <ActivityIcon className="w-4 h-4 text-emerald-400" />
                         <div>
                           <span className="text-xs text-slate-200 line-clamp-1">{int.summary}</span>
-                          <span className="text-[10px] text-cockpit-muted font-mono">{int.companyName} • {int.channel} • {int.date}</span>
+                          <span className="text-[10px] text-cockpit-muted font-mono">{int.companyName} • {int.channel} • {formatDisplayDate(int.date)}</span>
                         </div>
                       </div>
                       <ArrowRight className="w-4 h-4 text-cockpit-subtle group-hover:text-emerald-400 group-hover:translate-x-1 transition-transform" />

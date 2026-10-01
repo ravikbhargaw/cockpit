@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { formatINR } from '@/lib/utils';
+import { formatINR, formatDisplayDate } from '@/lib/utils';
 
 export interface PriorityItem {
   id: string;
@@ -62,7 +62,7 @@ export async function calculateFounderAttention(todayStr?: string): Promise<Foun
     const suggestedAction = isOutreach ? 'Start Outreach' : (isOverdue ? 'Follow Up' : 'Execute Action');
     const priority = 'High';
     const priorityLevel = isOverdue ? 1 : 2;
-    const dueText = isOverdue ? `Overdue (${r.next_action_date})` : 'Due Today';
+    const dueText = isOverdue ? `Overdue (${formatDisplayDate(r.next_action_date)})` : 'Due Today';
     const category = isOutreach ? 'OUTREACH' : (isOverdue ? 'OVERDUE' : 'TODAY');
 
     priorities.push({
@@ -72,7 +72,7 @@ export async function calculateFounderAttention(todayStr?: string): Promise<Foun
       companyName: r.company_name,
       title: isOutreach ? `Start Outreach — ${r.company_name}` : `Follow up with ${r.company_name}`,
       reason: isOverdue 
-        ? `Overdue next action (${r.next_action_date}): ${r.next_action || 'Follow-up required'}`
+        ? `Overdue next action (${formatDisplayDate(r.next_action_date)}): ${r.next_action || 'Follow-up required'}`
         : `Scheduled for today: ${r.next_action || 'Follow-up required'}`,
       priority,
       priorityLevel,
@@ -108,7 +108,7 @@ export async function calculateFounderAttention(todayStr?: string): Promise<Foun
       priority: 'High',
       priorityLevel: isOverdue ? 1 : 2,
       suggestedAction: 'Progress Deal',
-      dueText: isOverdue ? `Overdue (${o.next_action_date})` : 'Due Today',
+      dueText: isOverdue ? `Overdue (${formatDisplayDate(o.next_action_date)})` : 'Due Today',
       targetUrl: `/relationships?companyId=${o.company_id}&tab=opportunities&opportunityId=${o.id}`,
     });
   }
@@ -235,7 +235,7 @@ export async function calculateFounderAttention(todayStr?: string): Promise<Foun
     companyId: u.company_id,
     companyName: u.company_name,
     title: u.next_action || `Scheduled action with ${u.company_name}`,
-    date: u.next_action_date,
+    date: formatDisplayDate(u.next_action_date),
     targetUrl: `/relationships?companyId=${u.company_id}`,
   }));
 

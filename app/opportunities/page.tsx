@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Target, Building2, ArrowRight, Plus } from 'lucide-react';
 import Link from 'next/link';
-import { formatINR } from '@/lib/utils';
+import { formatINR, formatDisplayDate } from '@/lib/utils';
 import { AddOpportunityModal } from '@/components/common/AddOpportunityModal';
 
 export default function OpportunitiesPage() {
@@ -160,7 +160,7 @@ export default function OpportunitiesPage() {
 
                           {opp.nextAction && (
                             <div className="text-[10px] text-cockpit-subtle font-mono pt-1 line-clamp-1">
-                              Next: {opp.nextAction} ({opp.nextActionDate})
+                              Next: {opp.nextAction} ({formatDisplayDate(opp.nextActionDate)})
                             </div>
                           )}
                         </div>

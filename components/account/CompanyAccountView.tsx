@@ -37,7 +37,7 @@ import {
 import { InteractionModal } from '@/components/common/InteractionModal';
 import { AddContactModal } from '@/components/common/AddContactModal';
 import { AddOpportunityModal } from '@/components/common/AddOpportunityModal';
-import { formatINR } from '@/lib/utils';
+import { formatINR, formatDisplayDate } from '@/lib/utils';
 
 interface CompanyAccountViewProps {
   company: Company;
@@ -400,7 +400,7 @@ export const CompanyAccountView: React.FC<CompanyAccountViewProps> = ({
                       Current Situation & Next Action
                     </h3>
                     <span className="font-mono text-xs text-slate-400">
-                      Due Date: <strong className="text-slate-200">{relationship.nextActionDate || 'Not Set'}</strong>
+                      Due Date: <strong className="text-slate-200">{formatDisplayDate(relationship.nextActionDate, 'Not Set')}</strong>
                     </span>
                   </div>
 
@@ -427,7 +427,7 @@ export const CompanyAccountView: React.FC<CompanyAccountViewProps> = ({
                     <div className="p-3 bg-cockpit-bg border border-cockpit-border rounded-lg text-xs">
                       <span className="text-cockpit-muted block mb-1">Last Interaction Summary</span>
                       <span className="text-slate-200 font-medium line-clamp-2">
-                        {latestInteraction ? `${latestInteraction.date}: ${latestInteraction.summary}` : 'No interaction logged yet.'}
+                        {latestInteraction ? `${formatDisplayDate(latestInteraction.date)}: ${latestInteraction.summary}` : 'No interaction logged yet.'}
                       </span>
                     </div>
                   </div>
@@ -575,12 +575,12 @@ export const CompanyAccountView: React.FC<CompanyAccountViewProps> = ({
                     </div>
                     <div className="flex justify-between">
                       <span className="text-cockpit-muted">First Contact Date</span>
-                      <span className="font-mono text-slate-300">{relationship.firstContactDate}</span>
+                      <span className="font-mono text-slate-300">{formatDisplayDate(relationship.firstContactDate)}</span>
                     </div>
                     {relationship.partnerSince && (
                       <div className="flex justify-between">
                         <span className="text-cockpit-muted">Partner Since</span>
-                        <span className="font-mono text-emerald-400 font-semibold">{relationship.partnerSince}</span>
+                        <span className="font-mono text-emerald-400 font-semibold">{formatDisplayDate(relationship.partnerSince)}</span>
                       </div>
                     )}
                   </div>
@@ -715,7 +715,7 @@ export const CompanyAccountView: React.FC<CompanyAccountViewProps> = ({
                         <div className="flex items-center gap-4 text-xs font-mono text-cockpit-muted">
                           <span>Est. Value: <strong className="text-emerald-400">{formatINR(opp.estimatedValueAmount || 0)}</strong></span>
                           <span>•</span>
-                          <span>Next Action: <strong className="text-slate-200">{opp.nextAction || 'N/A'}</strong> ({opp.nextActionDate || 'No Date'})</span>
+                          <span>Next Action: <strong className="text-slate-200">{opp.nextAction || 'N/A'}</strong> ({formatDisplayDate(opp.nextActionDate, 'No Date')})</span>
                         </div>
                       </div>
 
@@ -774,7 +774,7 @@ export const CompanyAccountView: React.FC<CompanyAccountViewProps> = ({
                           </span>
                           <span>With {int.contactName || 'Principal Contact'}</span>
                         </div>
-                        <span className="font-mono text-cockpit-muted">{int.date}</span>
+                        <span className="font-mono text-cockpit-muted">{formatDisplayDate(int.date)}</span>
                       </div>
                       <p className="text-xs text-slate-300 leading-relaxed font-medium">{int.summary}</p>
                       {(int.whatTheyNeeded || int.whatWeLearned) && (
@@ -795,7 +795,7 @@ export const CompanyAccountView: React.FC<CompanyAccountViewProps> = ({
                       )}
                       {int.nextAction && (
                         <div className="text-xs text-meaven-light font-medium pt-1">
-                          Next Action: <span className="text-slate-200">{int.nextAction}</span> (Due: {int.nextActionDate || 'N/A'})
+                          Next Action: <span className="text-slate-200">{int.nextAction}</span> (Due: {formatDisplayDate(int.nextActionDate, 'N/A')})
                         </div>
                       )}
                     </div>

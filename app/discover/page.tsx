@@ -25,7 +25,7 @@ import { ResearchDetailModal } from '@/components/discover/ResearchDetailModal';
 import NewResearchModal from '@/components/discover/NewResearchModal';
 import JobProgressBanner from '@/components/discover/JobProgressBanner';
 import { printResearchDossier } from '@/lib/exportPdf';
-import { formatINR, formatDateTime } from '@/lib/utils';
+import { formatINR, formatDateTime, formatDisplayDate } from '@/lib/utils';
 
 export default function DiscoverPage() {
   const [candidates, setCandidates] = useState<ResearchCandidate[]>([]);
@@ -286,7 +286,7 @@ export default function DiscoverPage() {
                 }`}
               >
                 <div className="flex items-center justify-between font-mono text-[10px] text-cockpit-muted mb-1">
-                  <span>{new Date(j.createdAt).toLocaleDateString()}</span>
+                  <span>{formatDisplayDate(j.createdAt)}</span>
                   <span className="text-[#36668d] font-semibold">{formatINR(j.estimatedCost || 0)}</span>
                 </div>
                 <p className="font-medium line-clamp-1 text-slate-200">&quot;{j.originalInstruction}&quot;</p>

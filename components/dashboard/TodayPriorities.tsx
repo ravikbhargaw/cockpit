@@ -3,6 +3,7 @@
 import React from 'react';
 import { Flame, ArrowRight, Building2, CheckCircle2, Calendar, Target, Award, Sparkles } from 'lucide-react';
 import Link from 'next/link';
+import { formatDisplayDate } from '@/lib/utils';
 
 export interface PriorityItemProps {
   id: string;
@@ -133,7 +134,7 @@ export const TodayPriorities: React.FC<TodayPrioritiesProps> = ({
                         </span>
                       </div>
                       <span className="text-[10px] font-mono text-meaven-blue px-2 py-0.5 bg-meaven-blue/10 rounded shrink-0">
-                        {item.date}
+                        {formatDisplayDate(item.date)}
                       </span>
                     </Link>
                   ))}
