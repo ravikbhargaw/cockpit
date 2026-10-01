@@ -677,7 +677,10 @@ export const DAL = {
     const serializeJson = (val: any, fallback: any) => {
       const target = val !== undefined ? val : fallback;
       if (target === null || target === undefined) return null;
-      if (typeof target === 'string') return target;
+      if (typeof target === 'string') {
+        // If it's already valid JSON, return as-is. Otherwise stringify it so PostgreSQL accepts it.
+        try { JSON.parse(target); return target; } catch { return JSON.stringify(target); }
+      }
       try { return JSON.stringify(target); } catch { return null; }
     };
 
