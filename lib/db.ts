@@ -1,8 +1,36 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
+// Direct HTTP fetch to Neon's SQL API — 100% compatible with Cloudflare Edge Workers.
+// Uses only fetch() which is native in Cloudflare. No WebSocket, no Node.js modules needed.
+async function neonFetch(connectionString: string, query: string, params: any[]): Promise<{ rows: any[]; rowCount: number }> {
+  // Parse postgres://user:password@host/database
+  const cleaned = connectionString.replace(/^postgres(ql)?:\/\//, 'https://');
+  const url = new URL(cleaned);
+  const host = url.hostname;
+  const user = decodeURIComponent(url.username);
+  const password = decodeURIComponent(url.password);
+  const auth = btoa(`${user}:${password}`);
 
-// Force all Pool queries to use HTTP fetch instead of WebSocket.
-// This is required for Cloudflare Edge Workers which don't support WebSocket natively.
-neonConfig.poolQueryViaFetch = true;
+  const endpoint = `https://${host}/sql`;
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Basic ${auth}`,
+      'Neon-Connection-String': connectionString,
+    },
+    body: JSON.stringify({ query, params }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Neon HTTP error (${response.status}): ${text}`);
+  }
+
+  const result = await response.json() as any;
+  return {
+    rows: result.rows || [],
+    rowCount: result.rowCount ?? result.rows?.length ?? 0,
+  };
+}
 
 let dbInstance: any = null;
 
@@ -10,60 +38,55 @@ function getDB() {
   const connectionString = process.env.DATABASE_URL || '';
   if (connectionString.startsWith('postgres://') || connectionString.startsWith('postgresql://')) {
     if (dbInstance && dbInstance._isPg) return dbInstance;
-    try {
-      const pool = new Pool({ connectionString });
 
-      const cleanParams = (params: any[]) =>
-        params.map((p) => (p === undefined ? null : p));
+    const cleanParams = (params: any[]) =>
+      params.map((p) => (p === undefined ? null : p));
 
-      dbInstance = {
-        _isPg: true,
-        prepare(sql: string) {
-          let pgSql = sql;
-          let paramIdx = 1;
-          pgSql = pgSql.replace(/\?/g, () => `$${paramIdx++}`);
+    dbInstance = {
+      _isPg: true,
+      prepare(sql: string) {
+        let pgSql = sql;
+        let paramIdx = 1;
+        pgSql = pgSql.replace(/\?/g, () => `$${paramIdx++}`);
 
-          return {
-            async all(...params: any[]) {
-              try {
-                const res = await pool.query(pgSql, cleanParams(params));
-                return res.rows || [];
-              } catch (err) {
-                console.error('PostgreSQL query error (all):', err);
-                return [];
-              }
-            },
-            async get(...params: any[]) {
-              try {
-                const res = await pool.query(pgSql, cleanParams(params));
-                return (res.rows && res.rows[0]) || null;
-              } catch (err) {
-                console.error('PostgreSQL query error (get):', err);
-                return null;
-              }
-            },
-            async run(...params: any[]) {
-              try {
-                const res = await pool.query(pgSql, cleanParams(params));
-                return { changes: res.rowCount || 1 };
-              } catch (err) {
-                console.error('PostgreSQL query error (run):', err);
-                return { changes: 0 };
-              }
-            },
-          };
-        },
-        exec(sql: string) {
-          try {
-            pool.query(sql);
-          } catch {}
-        },
-        pragma(sql: string) {},
-      };
-      return dbInstance;
-    } catch (err) {
-      console.error('Error instantiating Neon pool:', err);
-    }
+        return {
+          async all(...params: any[]) {
+            try {
+              const result = await neonFetch(connectionString, pgSql, cleanParams(params));
+              return result.rows;
+            } catch (err) {
+              console.error('PostgreSQL query error (all):', err);
+              return [];
+            }
+          },
+          async get(...params: any[]) {
+            try {
+              const result = await neonFetch(connectionString, pgSql, cleanParams(params));
+              return result.rows[0] || null;
+            } catch (err) {
+              console.error('PostgreSQL query error (get):', err);
+              return null;
+            }
+          },
+          async run(...params: any[]) {
+            try {
+              const result = await neonFetch(connectionString, pgSql, cleanParams(params));
+              return { changes: result.rowCount || 1 };
+            } catch (err: any) {
+              console.error('PostgreSQL query error (run):', err);
+              throw err; // Re-throw so callers know the update failed
+            }
+          },
+        };
+      },
+      exec(sql: string) {
+        neonFetch(connectionString, sql, []).catch((err) =>
+          console.error('exec error:', err)
+        );
+      },
+      pragma(sql: string) {},
+    };
+    return dbInstance;
   }
 
   // Only attempt SQLite when DATABASE_URL is not set (local dev only).
