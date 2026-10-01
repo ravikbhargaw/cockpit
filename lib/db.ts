@@ -65,51 +65,57 @@ function getDB() {
     }
   }
 
-  if (dbInstance && dbInstance._isSqlite) return dbInstance;
+  // Only attempt SQLite when DATABASE_URL is not set (local dev only).
+  // On Cloudflare Edge Workers, DATABASE_URL is always set (PostgreSQL).
+  // eval('require') crashes the Cloudflare bundler, so we must never reach this code in production.
+  if (!process.env.DATABASE_URL) {
+    if (dbInstance && dbInstance._isSqlite) return dbInstance;
 
-  // Local SQLite fallback with lazy requirement
-  try {
-    const req = eval('require');
-    const path = req('path');
-    const fs = req('fs');
-    const Database = req('better-sqlite3');
-    const dbPath = path.join(process.cwd(), 'data', 'cockpit.db');
-    const dataDir = path.dirname(dbPath);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    try {
+      const req = eval('require');
+      const path = req('path');
+      const fs = req('fs');
+      const Database = req('better-sqlite3');
+      const dbPath = path.join(process.cwd(), 'data', 'cockpit.db');
+      const dataDir = path.dirname(dbPath);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+      const sqliteDb = new Database(dbPath);
+      sqliteDb.pragma('journal_mode = WAL');
+      sqliteDb.pragma('foreign_keys = ON');
+
+      dbInstance = {
+        _isSqlite: true,
+        prepare(sql: string) {
+          const stmt = sqliteDb.prepare(sql);
+          return {
+            async all(...params: any[]) { return stmt.all(...params); },
+            async get(...params: any[]) { return stmt.get(...params); },
+            async run(...params: any[]) { return stmt.run(...params); },
+          };
+        },
+        exec(sql: string) { sqliteDb.exec(sql); },
+        pragma(sql: string) { sqliteDb.pragma(sql); },
+      };
+      return dbInstance;
+    } catch (err) {
+      // ignore
     }
-    const sqliteDb = new Database(dbPath);
-    sqliteDb.pragma('journal_mode = WAL');
-    sqliteDb.pragma('foreign_keys = ON');
-
-    dbInstance = {
-      _isSqlite: true,
-      prepare(sql: string) {
-        const stmt = sqliteDb.prepare(sql);
-        return {
-          async all(...params: any[]) { return stmt.all(...params); },
-          async get(...params: any[]) { return stmt.get(...params); },
-          async run(...params: any[]) { return stmt.run(...params); },
-        };
-      },
-      exec(sql: string) { sqliteDb.exec(sql); },
-      pragma(sql: string) { sqliteDb.pragma(sql); },
-    };
-    return dbInstance;
-  } catch (err) {
-    // Safe build-time dummy driver (not memoized to allow runtime process.env.DATABASE_URL pickup)
-    return {
-      prepare(sql: string) {
-        return {
-          all: async () => [],
-          get: async () => null,
-          run: async () => ({ changes: 0 }),
-        };
-      },
-      exec: () => {},
-      pragma: () => {},
-    };
   }
+
+  // Fallback dummy driver (used at build time or if SQLite fails)
+  return {
+    prepare(sql: string) {
+      return {
+        all: async () => [],
+        get: async () => null,
+        run: async () => ({ changes: 0 }),
+      };
+    },
+    exec: () => {},
+    pragma: () => {},
+  };
 }
 
 export interface DatabaseClient {
