@@ -47,7 +47,7 @@ export default function DiscoverPage() {
     approved: 0,
   });
 
-  const [selectedStatus, setSelectedStatus] = useState<string>('All');
+  const [selectedStatus, setSelectedStatus] = useState<string>('DISCOVERED');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Modals

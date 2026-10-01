@@ -555,7 +555,7 @@ export const DAL = {
 
     if (searchQuery && searchQuery.trim() !== '') {
       const q = `%${searchQuery.trim()}%`;
-      query += ' AND (name LIKE ? OR location LIKE ? OR city LIKE ? OR company_type LIKE ? OR industry LIKE ? OR source LIKE ?)';
+      query += ' AND (name ILIKE ? OR location ILIKE ? OR city ILIKE ? OR company_type ILIKE ? OR industry ILIKE ? OR source ILIKE ?)';
       params.push(q, q, q, q, q, q);
     }
 
