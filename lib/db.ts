@@ -1,20 +1,15 @@
 // Direct HTTP fetch to Neon's SQL API — 100% compatible with Cloudflare Edge Workers.
 // Uses only fetch() which is native in Cloudflare. No WebSocket, no Node.js modules needed.
 async function neonFetch(connectionString: string, query: string, params: any[]): Promise<{ rows: any[]; rowCount: number }> {
-  // Parse postgres://user:password@host/database
   const cleaned = connectionString.replace(/^postgres(ql)?:\/\//, 'https://');
   const url = new URL(cleaned);
   const host = url.hostname;
-  const user = decodeURIComponent(url.username);
-  const password = decodeURIComponent(url.password);
-  const auth = btoa(`${user}:${password}`);
-
   const endpoint = `https://${host}/sql`;
+
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Basic ${auth}`,
       'Neon-Connection-String': connectionString,
     },
     body: JSON.stringify({ query, params }),
