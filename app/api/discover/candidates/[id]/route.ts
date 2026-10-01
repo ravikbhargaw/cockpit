@@ -22,7 +22,8 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
     }
     return NextResponse.json(updated);
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to update candidate' }, { status: 500 });
+  } catch (error: any) {
+    console.error('Candidate PUT route error:', error);
+    return NextResponse.json({ error: error?.message || 'Failed to update candidate' }, { status: 500 });
   }
 }

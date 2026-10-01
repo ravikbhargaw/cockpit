@@ -657,30 +657,38 @@ export const DAL = {
     if (!existing) return null;
 
     const now = new Date().toISOString();
-    const companyName = data.companyName !== undefined ? data.companyName : (data.name !== undefined ? data.name : existing.name);
-    const website = data.website !== undefined ? data.website : existing.website;
-    const domain = data.domain !== undefined ? data.domain : (website ? normalizeDomain(website) : existing.domain);
-    const location = data.location !== undefined ? data.location : (data.city !== undefined ? data.city : existing.location);
-    const companyType = data.companyType !== undefined ? data.companyType : existing.company_type;
-    const industry = data.industry !== undefined ? data.industry : existing.industry;
-    const description = data.description !== undefined ? data.description : (data.summary !== undefined ? data.summary : existing.description);
-    const source = data.source !== undefined ? data.source : existing.source;
-    const sourceUrl = data.sourceUrl !== undefined ? data.sourceUrl : existing.source_url;
-    const researchStatus = data.researchStatus !== undefined ? data.researchStatus : existing.research_status;
-    const verificationStatus = data.verificationStatus !== undefined ? data.verificationStatus : existing.verification_status;
-    const verificationReason = data.verificationReason !== undefined ? data.verificationReason : existing.verification_reason;
-    const fitScore = data.fitScore !== undefined ? Number(data.fitScore) : (data.aiScore !== undefined ? Number(data.aiScore) : existing.fit_score);
-    const fitReason = data.fitReason !== undefined ? data.fitReason : existing.fit_reason;
-    const priority = data.priority !== undefined ? data.priority : existing.priority;
-    const notes = data.notes !== undefined ? data.notes : existing.notes;
-    const businessSignals = data.businessSignals !== undefined ? JSON.stringify(data.businessSignals) : existing.business_signals;
-    const partnerModelSignals = data.partnerModelSignals !== undefined ? JSON.stringify(data.partnerModelSignals) : existing.partner_model_signals;
-    const partnerOpportunitySignal = data.partnerOpportunitySignal !== undefined ? data.partnerOpportunitySignal : existing.partner_opportunity_signal;
-    const partnerOpportunityReason = data.partnerOpportunityReason !== undefined ? data.partnerOpportunityReason : existing.partner_opportunity_reason;
-    const evidenceLimitations = data.evidenceLimitations !== undefined ? data.evidenceLimitations : existing.evidence_limitations;
-    const founderInvestigationFlags = data.founderInvestigationFlags !== undefined ? JSON.stringify(data.founderInvestigationFlags) : existing.founder_investigation_flags;
-    const jobId = data.jobId !== undefined ? data.jobId : existing.job_id;
-    const evidenceJson = data.evidenceList !== undefined ? JSON.stringify(data.evidenceList) : (data.evidenceJson !== undefined ? data.evidenceJson : existing.evidence_json);
+    const companyName = data.companyName ?? data.name ?? existing.name ?? 'Untitled Candidate';
+    const website = data.website ?? existing.website ?? '';
+    const domain = data.domain ?? (website ? normalizeDomain(website) : existing.domain) ?? '';
+    const location = data.location ?? data.city ?? existing.location ?? existing.city ?? '';
+    const companyType = data.companyType ?? data.industrySegment ?? existing.company_type ?? existing.industry_segment ?? 'Architecture';
+    const industry = data.industry ?? data.industrySegment ?? existing.industry ?? existing.industry_segment ?? companyType;
+    const description = data.description ?? data.summary ?? existing.description ?? existing.summary ?? '';
+    const source = data.source ?? existing.source ?? 'AI Research Engine';
+    const sourceUrl = data.sourceUrl ?? existing.source_url ?? '';
+    const researchStatus = data.researchStatus ?? existing.research_status ?? 'DISCOVERED';
+    const verificationStatus = data.verificationStatus ?? existing.verification_status ?? 'UNVERIFIED';
+    const verificationReason = data.verificationReason ?? existing.verification_reason ?? '';
+    const fitScore = data.fitScore !== undefined ? Number(data.fitScore) : (data.aiScore !== undefined ? Number(data.aiScore) : (existing.fit_score ?? existing.ai_score ?? 80));
+    const fitReason = data.fitReason ?? existing.fit_reason ?? '';
+    const priority = data.priority ?? existing.priority ?? 'MEDIUM';
+    const notes = data.notes ?? existing.notes ?? '';
+
+    const serializeJson = (val: any, fallback: any) => {
+      const target = val !== undefined ? val : fallback;
+      if (target === null || target === undefined) return null;
+      if (typeof target === 'string') return target;
+      try { return JSON.stringify(target); } catch { return null; }
+    };
+
+    const businessSignals = serializeJson(data.businessSignals, existing.business_signals);
+    const partnerModelSignals = serializeJson(data.partnerModelSignals, existing.partner_model_signals);
+    const partnerOpportunitySignal = data.partnerOpportunitySignal ?? existing.partner_opportunity_signal ?? 'UNKNOWN';
+    const partnerOpportunityReason = data.partnerOpportunityReason ?? existing.partner_opportunity_reason ?? '';
+    const evidenceLimitations = serializeJson(data.evidenceLimitations, existing.evidence_limitations);
+    const founderInvestigationFlags = serializeJson(data.founderInvestigationFlags, existing.founder_investigation_flags);
+    const jobId = data.jobId ?? existing.job_id ?? null;
+    const evidenceJson = serializeJson(data.evidenceList ?? data.evidenceJson, existing.evidence_json);
 
     await db.prepare(`
       UPDATE research_candidates SET
