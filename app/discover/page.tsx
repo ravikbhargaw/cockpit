@@ -47,7 +47,7 @@ export default function DiscoverPage() {
     approved: 0,
   });
 
-  const [selectedStatus, setSelectedStatus] = useState<string>('DISCOVERED');
+  const [selectedStatus, setSelectedStatus] = useState<string>('READY_FOR_REVIEW');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Modals
@@ -320,7 +320,7 @@ export default function DiscoverPage() {
           <Filter className="w-4 h-4 text-cockpit-subtle shrink-0" />
           <span className="text-xs font-semibold text-slate-300 font-mono shrink-0">Status:</span>
           <div className="flex items-center space-x-1 shrink-0">
-            {['All', 'DISCOVERED', 'RESEARCHING', 'READY_FOR_REVIEW', 'APPROVED', 'REJECTED', 'ARCHIVED'].map((st) => (
+            {['All', 'READY_FOR_REVIEW', 'APPROVED', 'REJECTED', 'RESEARCHING', 'ARCHIVED', 'DISCOVERED'].map((st) => (
               <button
                 key={st}
                 onClick={() => setSelectedStatus(st)}
