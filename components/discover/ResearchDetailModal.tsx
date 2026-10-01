@@ -302,8 +302,15 @@ export const ResearchDetailModal: React.FC<ResearchDetailModalProps> = ({
         onRefresh();
         setTimeout(() => setSaveMessage(null), 3000);
       } else {
-        const errData = await res.json().catch(() => ({}));
-        alert(errData.error || errData.message || `Failed to save workspace (${res.status})`);
+        const errText = await res.text().catch(() => '');
+        let errMsg = `Failed to save workspace (${res.status})`;
+        try {
+          const errData = JSON.parse(errText);
+          if (errData.error || errData.message) errMsg = errData.error || errData.message;
+        } catch {
+          if (errText) errMsg = `Failed to save workspace (${res.status}): ${errText.substring(0, 120)}`;
+        }
+        alert(errMsg);
       }
     } catch (err: any) {
       alert(`Failed to save workspace: ${err?.message || err}`);
