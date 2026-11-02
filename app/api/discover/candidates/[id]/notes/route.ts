@@ -1,8 +1,12 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { DAL } from '@/lib/db/dal';
+import { requireAuth } from '@/lib/session';
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const auth = await requireAuth(req);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const body = await req.json();
     if (!body.note || body.note.trim() === '') {

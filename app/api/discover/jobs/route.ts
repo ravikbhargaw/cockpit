@@ -2,11 +2,15 @@ export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import { DAL } from '@/lib/db/dal';
 import { planResearchInstruction } from '@/lib/ai/planner';
-import { calculateEstimatedCost } from '@/lib/ai/pricing';
+import { calculateEstimatedCost, getActiveResearchModel } from '@/lib/ai/pricing';
+import { requireAuth } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const jobs = await DAL.getResearchJobs();
     return NextResponse.json({ success: true, jobs });
@@ -19,6 +23,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const body = await req.json();
     const { instruction, budgetLimit } = body;
@@ -33,16 +40,25 @@ export async function POST(req: NextRequest) {
     const cleanInst = instruction.trim();
     const planResult = await planResearchInstruction(cleanInst);
 
+    if (!planResult.ok) {
+      return NextResponse.json(
+        { success: false, error: planResult.error || 'Failed to plan research instruction' },
+        { status: 400 }
+      );
+    }
+
     const initialCost = calculateEstimatedCost(
       planResult.usage?.promptTokens || 0,
       planResult.usage?.completionTokens || 0,
       0
     );
 
+    const activeModel = getActiveResearchModel();
+
     const job = await DAL.createResearchJob(
       cleanInst,
       planResult.criteria,
-      process.env.RESEARCH_AI_MODEL || 'gpt-5.6-luna',
+      activeModel,
       budgetLimit || 150
     );
 

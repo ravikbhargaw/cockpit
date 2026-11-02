@@ -2,14 +2,18 @@ export const runtime = 'edge';
 
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { formatINR } from '@/lib/utils';
+import { formatINR, getISTDateString } from '@/lib/utils';
 import { calculateFounderAttention } from '@/lib/priorityEngine';
+import { requireAuth } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getISTDateString();
 
     // 1. Calculate Founder Attention & Priorities Engine
     const { briefing, priorities, upNext } = await calculateFounderAttention(today);

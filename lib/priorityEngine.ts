@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { formatINR, formatDisplayDate } from '@/lib/utils';
+import { formatINR, formatDisplayDate, getISTDateString } from '@/lib/utils';
 
 export interface PriorityItem {
   id: string;
@@ -39,7 +39,7 @@ export interface FounderAttentionResult {
 }
 
 export async function calculateFounderAttention(todayStr?: string): Promise<FounderAttentionResult> {
-  const today = todayStr || new Date().toISOString().split('T')[0];
+  const today = todayStr || getISTDateString();
   const priorities: PriorityItem[] = [];
 
   // 1. OVERDUE & TODAY RELATIONSHIP ACTIONS
@@ -197,28 +197,10 @@ export async function calculateFounderAttention(todayStr?: string): Promise<Foun
     });
   }
 
-  // 6. FOUNDER 180 CHECK-IN DUE
-  const checkinRow = (await db.prepare(`SELECT * FROM founder_checkins WHERE date = ?`).get(today)) as any;
-  if (!checkinRow) {
-    priorities.push({
-      id: 'prio-founder180',
-      category: 'FOUNDER180',
-      companyId: '',
-      companyName: 'Founder 180 Consistency',
-      title: "Log Today's Founder 180 Check-in",
-      reason: "Daily 180-Day consistency check-in for Work, Sales, Body & Sleep is pending for today.",
-      priority: 'Medium',
-      priorityLevel: 7,
-      suggestedAction: 'Log Check-in',
-      dueText: 'Due Today',
-      targetUrl: '/180-day-founder',
-    });
-  }
-
   // Sort by priorityLevel ASC
   priorities.sort((a, b) => a.priorityLevel - b.priorityLevel);
 
-  // 7. UPCOMING ACTIONS (For empty / up-next state)
+  // 6. UPCOMING ACTIONS (For empty / up-next state)
   const upcomingRows = (await db.prepare(`
     SELECT r.*, c.name as company_name
     FROM relationships r
@@ -242,7 +224,7 @@ export async function calculateFounderAttention(todayStr?: string): Promise<Foun
   // Build Briefing Summary Text strictly derived from the generated priorities array
   const overdueCount = priorities.filter((p) => p.dueText.startsWith('Overdue') || p.category === 'OVERDUE').length;
   const decisionsCount = priorities.filter((p) => p.category === 'RESEARCH_REVIEW').length;
-  const todayCount = priorities.filter((p) => (p.dueText === 'Due Today' || p.category === 'TODAY') && p.category !== 'FOUNDER180').length;
+  const todayCount = priorities.filter((p) => p.dueText === 'Due Today' || p.category === 'TODAY').length;
   const totalCount = priorities.length;
   const isClear = totalCount === 0;
 

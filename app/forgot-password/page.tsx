@@ -2,28 +2,37 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { KeyRound, ArrowLeft, Mail, CheckCircle2, ShieldCheck, Sparkles } from 'lucide-react';
+import { KeyRound, ArrowLeft, Mail, CheckCircle2, ShieldCheck, Sparkles, AlertCircle } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setError(null);
 
     try {
-      await fetch('/api/auth/forgot-password', {
+      const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setSubmitted(true);
+      } else {
+        setError(data.error || 'Failed to process password reset. Please try again.');
+      }
     } catch {
-      // Ignore network errors to preserve uniform generic user response
+      setError('Connection error. Please try again.');
     } finally {
       setIsSubmitting(false);
-      setSubmitted(true);
     }
   };
 
@@ -48,6 +57,14 @@ export default function ForgotPasswordPage() {
             Enter your email address and we&apos;ll help you reset your password.
           </p>
         </div>
+
+        {/* Error Alert */}
+        {error && (
+          <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-400 flex items-center gap-2.5 animate-in fade-in duration-200">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
         {/* Response Feedback */}
         {submitted ? (

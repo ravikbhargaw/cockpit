@@ -1,14 +1,31 @@
 /**
  * AI Candidate Qualifier Module
  * 
- * Evaluates candidate fit, calculates fit scores (0–100), priority levels,
- * and generates structured evidence separating KNOWN, INFERRED, and UNKNOWN facts.
+ * Evaluates candidate fit, calculates component-calibrated fit scores (0–100),
+ * assigns strictly differentiated priority levels, and generates structured evidence
+ * separating KNOWN, INFERRED, and UNKNOWN facts without fabrication.
  */
 
 import { callOpenAICompletion } from './openai';
 import { ParsedCriteria, ResearchEvidence, PriorityLevel, VerificationStatus, PartnerOpportunitySignal } from '@/types';
 import { RawCandidate } from './discovery';
 import { verifyCandidateEntity } from './verifier';
+
+export interface ScoringDimension {
+  score: number;
+  max: number;
+  rationale: string;
+}
+
+export interface ScoringBreakdown {
+  icpFit: ScoringDimension;
+  projectTypes: ScoringDimension;
+  recurringPotential: ScoringDimension;
+  executionOpportunity: ScoringDimension;
+  serviceRelevance: ScoringDimension;
+  contactability: ScoringDimension & { identifiedChannels?: string[] };
+  evidenceQuality: ScoringDimension;
+}
 
 export interface QualificationResult {
   candidateId?: string;
@@ -23,6 +40,7 @@ export interface QualificationResult {
   partnerOpportunityReason: string;
   evidenceLimitations: string;
   founderInvestigationFlags: string[];
+  scoringBreakdown?: ScoringBreakdown;
   businessSignals: {
     projectsWorkTypes?: string;
     commercialFocus?: string;
@@ -43,46 +61,133 @@ export interface QualificationResult {
 
 const QUALIFIER_SYSTEM_PROMPT = `
 You are the Executive Candidate Qualifier & Research Intelligence Analyst for Meaven Founder Cockpit.
-Your task is to evaluate a research candidate against the founder's research instruction and criteria.
+Your objective is to evaluate a research candidate against Meaven's ICP to answer the core founder sales question:
+"Would Ravi personally spend time calling or emailing this company tomorrow because there is a credible possibility of becoming a recurring Meaven execution partner?"
 
-CRITICAL INSTRUCTIONS ON REASONING & RESEARCH INTELLIGENCE:
-1. Reason in this exact order:
-   A. Identity verification & website domain signals
-   B. Geographic relevance
-   C. Company/service relevance
-   D. Project/market relevance
-   E. Business model signals (e.g. "In-house execution claimed", "Turnkey execution claimed", "Design-only positioning", "Manufacturing claimed", "Subcontracting mentioned")
-   F. Partner opportunity signal & evidence limitations
-   G. Evidence quality classification (KNOWN / INFERRED / UNKNOWN)
-   H. Founder investigation flags (⚠️ warnings for pre-outreach founder review)
+DO NOT OPTIMIZE FOR HIGH SCORES. OPTIMIZE FOR ACCURATE DIFFERENTIATION.
+It is completely normal and expected that only 2–4 out of 10 candidates qualify as HIGH priority.
+HIGH must mean something substantial.
 
-2. TRUTH & EVIDENCE CLASSIFICATION:
-   - "KNOWN": Verifiable fact directly supported by web source or official website.
-   - "INFERRED": Logical deduction from portfolio, location, or industry signals.
-   - "UNKNOWN": Missing or unverified data point. DO NOT FABRICATE FACTS OR GUESS UNVERIFIED CLAIMS.
+==================================================
+MEAVEN ICP & POSITIONING
+==================================================
+- Meaven Designs Pvt Ltd is a Bengaluru-based glass and specialized interior execution partner ("You bring the design. We handle the execution.").
+- Meaven partners with architecture firms, interior design practices, and design-build firms as an execution/backend partner for:
+  * Glass partitions, glass doors, shower partitions, mirrors
+  * Procurement, measurement, supply, site coordination, installation, QA/QC, handover
+  * Selected specialized interior execution
+- GOAL: Recurring B2B partner relationships across multiple client projects, NOT one-off retail consumer inquiries.
+- PRIMARY TARGETS:
+  1. Boutique architecture practices
+  2. Small/mid-sized architecture firms
+  3. Boutique interior design firms
+  4. Architecture + interior design studios
+  5. Design-and-build (D&B) practices
+  6. Turnkey commercial interior firms
+  7. Commercial interior specialists (workplaces, offices, coworking, tech parks)
+  8. Hospitality & retail interior design studios (restaurants, hotels, cafes, retail flagships)
+  9. Premium residential / luxury villa design firms with meaningful execution requirements
+- PRIMARY GEOGRAPHY: Bengaluru / Bangalore actively operating.
 
-3. BUSINESS MODEL & PARTNER MODEL SIGNALS:
-   - Output structured signal strings in "partnerModelSignals" (e.g. ["In-house execution claimed", "Turnkey execution claimed", "Commercial project capability"]).
-   - Note: Operational claims (like claiming in-house execution) are SIGNALS, NOT automatic rejections.
+==================================================
+SCORING FRAMEWORK (0–100 POINTS)
+==================================================
+Evaluate the candidate across the following 7 explicit dimensions:
 
-4. FIT SCORE VS. PARTNER OPPORTUNITY SIGNAL:
-   - FIT SCORE (0-100): Measures how closely the candidate matches the user's research instruction / ICP criteria (location, company type, services, portfolio quality).
-   - PARTNER OPPORTUNITY SIGNAL ("HIGH" | "MEDIUM" | "LOW" | "UNKNOWN"): Measures evidence that this company could potentially become a repeat Meaven execution/backend partner.
-   - CRITICAL RULE: DO NOT assign "HIGH" Partner Opportunity merely because the candidate matches the ICP, is in the requested city, is a boutique firm, has a high fit score, or has attractive projects.
-   - "HIGH": Requires meaningful public evidence supporting actual partner potential (e.g., signs of external/vendor/subcontract execution, outsourcing language, project volume/scale needing execution capacity, repeat commercial projects, specialist execution requirements, multi-location execution needs, or explicit partner/vendor ecosystem). DO NOT FABRICATE THESE SIGNALS.
-   - "MEDIUM": Use when there is some credible evidence suggesting partner potential but key operational aspects remain unverified. Explain what evidence supports the signal and what remains uncertain.
-   - "UNKNOWN": Use when available evidence does not establish meaningful partner opportunity (e.g., strong ICP fit but execution model unknown; in-house claim without outsourcing details; residential portfolio without external execution evidence). UNKNOWN IS NOT A NEGATIVE JUDGMENT.
-   - "LOW": Use ONLY when available evidence itself provides a meaningful reason why an execution partnership is unlikely or poorly aligned. DO NOT USE "LOW" simply because evidence is missing.
-   - "partnerModelSignals" (e.g., ["In-house execution claimed", "Turnkey execution claimed"]): Informational business model signals only. Operational claims (like claiming in-house execution) MUST NOT automatically determine "HIGH" or "LOW".
-   - "partnerOpportunityReason" must explain why the signal was assigned and must stay strictly within captured evidence.
+A. ICP / Business-Model Fit (0–20 points):
+   - 18–20: Core target — Boutique/mid architecture practice, architecture + interior studio, commercial/workplace interior firm, or design-build firm in Bengaluru.
+   - 14–17: Strongly aligned — Turnkey interior firm, commercial retail specialist, or luxury residential architecture studio in Bengaluru.
+   - 8–13: Moderately aligned — General interior decorators, pure residential studio with limited scale, or large corporate practice where entry is slow.
+   - 0–7: Misaligned / weak — Product retailer, furniture seller, manufacturer, or company with unclear Bengaluru operating presence.
 
-5. FOUNDER INVESTIGATION FLAGS (⚠️):
-   - Provide actionable ⚠️ warning flags in "founderInvestigationFlags" (e.g. ["⚠️ Company claims in-house execution — verify whether specialist/overflow work is outsourced.", "⚠️ Turnkey provider — investigate whether glass/interior execution is handled internally or through external partners."]).
+B. Relevant Project Types (0–20 points):
+   - 18–20: Strong commercial portfolio — Documented office/workplace fitouts, coworking spaces, tech parks, hospitality, or retail chain projects.
+   - 13–17: Mixed portfolio — Premium villas / luxury residential combined with boutique commercial/offices.
+   - 8–12: Primarily standard residential apartments with limited architectural glass or execution complexity.
+   - 0–7: Minor home decor, staging, or no clear project portfolio shown.
 
-Return valid JSON with this schema:
+C. Recurring Project Potential (0–15 points):
+   - 13–15: Active pipeline — Evident portfolio of multiple ongoing or recently completed projects across commercial/hospitality, indicating recurring project velocity.
+   - 9–12: Steady practice with a documented portfolio of 5–15 projects, but project frequency is moderately clear.
+   - 4–8: Small studio with 1–4 documented projects, irregular project pace.
+   - 0–3: Very thin/stale portfolio or single one-off project shown.
+
+D. Execution / Outsourcing Opportunity Evidence (0–20 points):
+   *CRITICAL RULE: DO NOT ASSUME OUTSOURCING. If there is NO explicit public evidence of external contractors, vendors, or outsourcing needs, this score MUST NOT exceed 6/20!*
+   - 16–20: Verified execution opportunity — Explicit evidence of working with external specialist contractors, subcontracting site execution, high project volume requiring execution capacity, or multi-location execution requirements.
+   - 10–15: Inferred / moderate opportunity — Design-and-build or turnkey practice delivering complex commercial/workplace fitouts where specialized glass/doors/partitions are routinely procured from specialized trade partners, though specific vendor relationships are unverified.
+   - 4–9: Unknown / unclear — Standard architecture/design firm where vendor model is completely unstated in public sources (MUST flag as UNKNOWN).
+   - 0–3: Negative fit — Firm has an exclusively vertically integrated proprietary fabrication factory, or explicit policy of doing everything in-house without external trade partners, or pure advisory firm with zero execution involvement.
+
+E. Meaven Service Relevance (0–10 points):
+   - 9–10: High glass relevance — Architectural glass partitions (frameless, acoustic, aluminium slim profile), glass doors, shower cubicles, custom mirrors explicitly visible in portfolio.
+   - 6–8: Moderate relevance — Commercial offices, premium residential, or hospitality where glass partitions/mirrors/shower enclosures are standard project specifications.
+   - 3–5: Minimal glass relevance — Traditional woodwork/carpentry focus, basic residential decorating.
+   - 0–2: No apparent relevance for glass, partitions, or specialized architectural interior execution.
+
+F. Contactability & Outreach Pathway (0–10 points):
+   - 9–10: High direct contactability — Public direct phone number/mobile, direct project enquiry email (e.g. projects@, contact@, info@), named founder/principal architect/partner, and office address in Bengaluru.
+   - 6–8: Good contactability — General office email/phone and named founder, but no dedicated project lead identified.
+   - 3–5: Basic / indirect contactability — Generic contact form only or single info email, no phone number, founder unnamed.
+   - 0–2: Unreachable / dead — No email or phone publicly accessible, broken contact page, or social-only link without contact details.
+
+G. Evidence Quality & Verification Confidence (0–5 points):
+   - 5: Active, high-integrity official website, verifiable projects with photos/locations, consistent business identity.
+   - 3–4: Active website, but portfolio has limited details or descriptions are concise.
+   - 1–2: Third-party directory snippet only, social-only presence, or sparse web trace.
+   - 0: Inactive domain, mismatch, or unverifiable claims.
+
+==================================================
+PARTNER OPPORTUNITY SIGNAL (SEPARATE FROM FIT SCORE)
+==================================================
+Assign one of: "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN":
+- "HIGH": Actual evidence suggesting recurring execution, external vendors, subcontracting, execution capacity requirements, or multi-site contractor coordination.
+- "MEDIUM": The business appears relevant and credible but the execution/vendor model is not established.
+- "UNKNOWN": Insufficient evidence to determine the execution/vendor model. (DO NOT assume outsourcing!).
+- "LOW": Evidence suggests limited execution relevance or self-contained in-house fabrication.
+
+==================================================
+PRIORITY LEVEL RULES (STRICT & MULTI-DIMENSIONAL)
+==================================================
+- "HIGH" Priority requires ALL of the following:
+  1. Fit Score >= 76
+  2. partnerOpportunitySignal is "HIGH" OR ("MEDIUM" with executionOpportunity >= 12 and contactability >= 7)
+  3. partnerOpportunitySignal is NOT "UNKNOWN" (Strict: UNKNOWN partner opportunity cannot automatically become HIGH)
+  4. icpFit >= 14 AND projectTypes >= 14 AND serviceRelevance >= 6
+  5. Active, verified domain
+- "MEDIUM" Priority:
+  * Fit Score >= 55 with verified domain, or strong ICP fit where execution model is UNKNOWN/investigative.
+- "LOW" Priority:
+  * Fit Score < 55, thin evidence, weak partner potential, unverified website, or unaligned business model.
+
+==================================================
+FOUNDER INVESTIGATION QUESTIONS (MANDATORY)
+==================================================
+For every candidate where partnerOpportunitySignal is "MEDIUM" or "UNKNOWN", generate 1–3 concrete, actionable questions for Ravi's first call/email:
+- e.g., "⚠️ Does [Company] specify glass partitions/doors for their commercial clients while turnkey contractors execute, or do they directly manage execution partners?"
+- e.g., "⚠️ Who oversees vendor selection for architectural glass and shower cubicles — the Principal Designer or an external PMC?"
+
+==================================================
+FACT STANDARD: STRICT KNOWN / INFERRED / UNKNOWN
+==================================================
+- "KNOWN": Directly supported by public web source, official site, or search snippet.
+- "INFERRED": Logical deduction from portfolio, location, or project type.
+- "UNKNOWN": Missing or unverified data point.
+- NEVER FABRICATE phone numbers, emails, project names, or outsourcing relationships.
+
+Return valid JSON with this exact schema:
 {
-  "fitScore": number (0-100),
-  "fitReason": "string",
+  "scoringBreakdown": {
+    "icpFit": { "score": number, "max": 20, "rationale": "string" },
+    "projectTypes": { "score": number, "max": 20, "rationale": "string" },
+    "recurringPotential": { "score": number, "max": 15, "rationale": "string" },
+    "executionOpportunity": { "score": number, "max": 20, "rationale": "string" },
+    "serviceRelevance": { "score": number, "max": 10, "rationale": "string" },
+    "contactability": { "score": number, "max": 10, "rationale": "string", "identifiedChannels": ["string"] },
+    "evidenceQuality": { "score": number, "max": 5, "rationale": "string" }
+  },
+  "fitScore": number (0-100, exactly equal to sum of above 7 scores),
+  "fitReason": "string (1-2 sentences summarizing the core fit rationale)",
   "priority": "HIGH" | "MEDIUM" | "LOW",
   "partnerModelSignals": ["string"],
   "partnerOpportunitySignal": "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN",
@@ -130,14 +235,33 @@ Custom Requirements: "${criteria.customRequirements || ''}"
   const aiResult = await callOpenAICompletion<any>(
     QUALIFIER_SYSTEM_PROMPT,
     userPrompt,
-    { responseFormatJson: true, temperature: 0.2 }
+    { responseFormatJson: true, temperature: 0.15 }
   );
 
   const todayStr = new Date().toISOString().split('T')[0];
 
   if (aiResult.ok && aiResult.data) {
     const d = aiResult.data;
-    let fitScore = typeof d.fitScore === 'number' ? Math.min(100, Math.max(0, d.fitScore)) : 75;
+
+    // Parse scoring breakdown
+    const sb = d.scoringBreakdown || {};
+    const icpScore = clamp(Number(sb.icpFit?.score) || 12, 0, 20);
+    const projScore = clamp(Number(sb.projectTypes?.score) || 12, 0, 20);
+    const recurScore = clamp(Number(sb.recurringPotential?.score) || 8, 0, 15);
+    let execScore = clamp(Number(sb.executionOpportunity?.score) || 5, 0, 20);
+    const servScore = clamp(Number(sb.serviceRelevance?.score) || 6, 0, 10);
+    const contactScore = clamp(Number(sb.contactability?.score) || 5, 0, 10);
+    const evidScore = clamp(Number(sb.evidenceQuality?.score) || 3, 0, 5);
+
+    let partnerOppSignal: PartnerOpportunitySignal = 
+      (d.partnerOpportunitySignal === 'HIGH' || d.partnerOpportunitySignal === 'MEDIUM' || d.partnerOpportunitySignal === 'LOW' || d.partnerOpportunitySignal === 'UNKNOWN')
+        ? d.partnerOpportunitySignal
+        : 'UNKNOWN';
+
+    // Enforcement: If partnerOpportunitySignal is UNKNOWN, outsourcing opportunity evidence MUST be capped at 6/20
+    if (partnerOppSignal === 'UNKNOWN') {
+      execScore = Math.min(execScore, 6);
+    }
 
     let rawEvidence: ResearchEvidence[] = Array.isArray(d.evidenceList)
       ? d.evidenceList.map((e: any) => ({
@@ -161,23 +285,79 @@ Custom Requirements: "${criteria.customRequirements || ''}"
     let verificationStatus: VerificationStatus = verification.verificationStatus || 'VERIFIED';
     let verificationReason = verification.verificationReason || `Active website confirmed for ${candidate.name}.`;
 
+    // Calculate sum of component scores
+    let fitScore = icpScore + projScore + recurScore + execScore + servScore + contactScore + evidScore;
+    fitScore = clamp(fitScore, 0, 100);
+
+    // Verification penalty if domain/entity is not active
     if (!verification.isVerified) {
-      fitScore = Math.min(fitScore, 55);
+      fitScore = Math.min(fitScore, 40);
+      partnerOppSignal = 'UNKNOWN';
     }
 
-    const priority: PriorityLevel = fitScore >= 80 ? 'HIGH' : fitScore >= 60 ? 'MEDIUM' : 'LOW';
+    // Calibrate Priority Level using strict multi-dimensional rules:
+    // HIGH Priority requires:
+    // 1. Fit score >= 76
+    // 2. Verified domain
+    // 3. Partner opportunity is NOT UNKNOWN (must be HIGH, or MEDIUM with execScore >= 12 and contactScore >= 7)
+    // 4. Strong ICP (>= 14) and strong project types (>= 14) and service relevance (>= 6)
+    let priority: PriorityLevel = 'LOW';
 
-    let partnerOppSignal: PartnerOpportunitySignal = d.partnerOpportunitySignal || 'MEDIUM';
-    let partnerOppReason = d.partnerOpportunityReason || `Aligns with target ${candidate.companyType} profile in ${candidate.location}.`;
+    const isHighEligible = 
+      verification.isVerified &&
+      fitScore >= 76 &&
+      partnerOppSignal !== 'UNKNOWN' &&
+      (partnerOppSignal === 'HIGH' || (partnerOppSignal === 'MEDIUM' && execScore >= 12 && contactScore >= 7)) &&
+      icpScore >= 14 &&
+      projScore >= 14 &&
+      servScore >= 6;
+
+    if (isHighEligible) {
+      priority = 'HIGH';
+    } else if (verification.isVerified && fitScore >= 55) {
+      priority = 'MEDIUM';
+    } else {
+      priority = 'LOW';
+    }
+
+    let partnerOppReason = d.partnerOpportunityReason || `Operating as ${candidate.companyType} in ${candidate.location}.`;
     let evLimitations = d.evidenceLimitations || 'Public evidence available; vendor/outsourcing model requires founder verification.';
-    let investigationFlags: string[] = Array.isArray(d.founderInvestigationFlags) ? d.founderInvestigationFlags : [];
+    let investigationFlags: string[] = Array.isArray(d.founderInvestigationFlags) ? [...d.founderInvestigationFlags] : [];
+
+    // Mandatory founder investigation questions for MEDIUM or UNKNOWN partner opportunities
+    if (partnerOppSignal === 'UNKNOWN' || partnerOppSignal === 'MEDIUM') {
+      const hasSpecificFlag = investigationFlags.some(f => f.toLowerCase().includes('glass') || f.toLowerCase().includes('vendor') || f.toLowerCase().includes('contractor') || f.toLowerCase().includes('execution'));
+      if (!hasSpecificFlag) {
+        investigationFlags.push(`⚠️ Investigate whether ${candidate.name} executes glass/metal partitions internally or sources via external trade execution partners.`);
+        investigationFlags.push(`⚠️ Clarify vendor decision ownership: does design team specify architectural glass, or does the turnkey client/PMC procure independently?`);
+      }
+    }
 
     if (!verification.isVerified) {
-      partnerOppSignal = 'UNKNOWN';
       partnerOppReason = `Company identity or domain content could not be verified (${verification.mismatchReason || 'unverified'}).`;
       evLimitations = 'Unverified website domain. Public business claims require manual verification.';
       investigationFlags.unshift(`⚠️ ${verificationReason}`);
     }
+
+    const scoringBreakdown: ScoringBreakdown = {
+      icpFit: { score: icpScore, max: 20, rationale: sb.icpFit?.rationale || 'ICP business model alignment' },
+      projectTypes: { score: projScore, max: 20, rationale: sb.projectTypes?.rationale || 'Portfolio project types relevance' },
+      recurringPotential: { score: recurScore, max: 15, rationale: sb.recurringPotential?.rationale || 'Pipeline and project recurrence potential' },
+      executionOpportunity: { score: execScore, max: 20, rationale: sb.executionOpportunity?.rationale || (partnerOppSignal === 'UNKNOWN' ? 'Execution model unverified from public sources' : 'Execution partner opportunity evidence') },
+      serviceRelevance: { score: servScore, max: 10, rationale: sb.serviceRelevance?.rationale || 'Relevance for glass, partitions, and specialized interiors' },
+      contactability: { 
+        score: contactScore, 
+        max: 10, 
+        rationale: sb.contactability?.rationale || 'Direct contactability channels',
+        identifiedChannels: sb.contactability?.identifiedChannels || []
+      },
+      evidenceQuality: { score: evidScore, max: 5, rationale: sb.evidenceQuality?.rationale || 'Verification confidence and web evidence depth' },
+    };
+
+    const businessSignals = d.businessSignals || {};
+    businessSignals.geographicRelevance = businessSignals.geographicRelevance || `${candidate.location} coverage`;
+    businessSignals.meavenFit = businessSignals.meavenFit || `Potential execution fit for ${candidate.companyType}`;
+    businessSignals.otherSignals = `Score breakdown: ICP ${icpScore}/20, Projects ${projScore}/20, Recurring ${recurScore}/15, Execution ${execScore}/20, Glass ${servScore}/10, Contact ${contactScore}/10, Evidence ${evidScore}/5. Total: ${fitScore}/100.`;
 
     return {
       ok: true,
@@ -185,41 +365,52 @@ Custom Requirements: "${criteria.customRequirements || ''}"
         name: candidate.name,
         fitScore,
         fitReason: verification.isVerified
-          ? (d.fitReason || `Matches ${criteria.targetCompanyTypes?.join(', ') || 'target criteria'} in ${candidate.location}`)
+          ? (d.fitReason || `Score ${fitScore}/100: ${sb.icpFit?.rationale || candidate.companyType} with ${sb.projectTypes?.rationale || 'relevant projects'}.`)
           : `Unverified domain content (${verification.mismatchReason}). Claims downgraded to UNKNOWN.`,
         priority,
         verificationStatus,
         verificationReason,
-        partnerModelSignals: Array.isArray(d.partnerModelSignals) ? d.partnerModelSignals : ['Turnkey execution claimed'],
+        partnerModelSignals: Array.isArray(d.partnerModelSignals) ? d.partnerModelSignals : ['Commercial design & execution claimed'],
         partnerOpportunitySignal: partnerOppSignal,
         partnerOpportunityReason: partnerOppReason,
         evidenceLimitations: evLimitations,
         founderInvestigationFlags: investigationFlags,
-        businessSignals: d.businessSignals || {
-          geographicRelevance: `${candidate.location} coverage`,
-          meavenFit: `Potential fit for ${candidate.companyType}`,
-        },
+        scoringBreakdown,
+        businessSignals,
         evidenceList: finalEvidence,
       },
       usage: aiResult.usage,
     };
   }
 
-  // Graceful rule-based qualification if OpenAI API call fails or key is missing
+  // If AI call failed, do not silently swallow error
   return {
-    ok: true,
-    result: generateFallbackQualification(candidate, criteria, todayStr),
+    ok: false,
+    result: null as any,
+    error: aiResult.error || 'AI qualification failed',
   };
 }
 
-function generateFallbackQualification(
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+export function generateFallbackQualification(
   candidate: RawCandidate,
   criteria: ParsedCriteria,
   todayStr: string
 ): QualificationResult {
   const matchGeo = criteria.geographies?.some(g => candidate.location.toLowerCase().includes(g.toLowerCase())) ?? true;
-  const fitScore = matchGeo ? 82 : 65;
-  const priority: PriorityLevel = fitScore >= 80 ? 'HIGH' : 'MEDIUM';
+  const icpScore = matchGeo ? 14 : 10;
+  const projScore = 12;
+  const recurScore = 8;
+  const execScore = 5; // UNKNOWN execution
+  const servScore = 6;
+  const contactScore = candidate.website ? 6 : 3;
+  const evidScore = candidate.website ? 3 : 1;
+
+  const fitScore = icpScore + projScore + recurScore + execScore + servScore + contactScore + evidScore;
+  const priority: PriorityLevel = fitScore >= 76 ? 'MEDIUM' : 'LOW'; // Fallback cannot be HIGH without verified AI analysis
 
   const hasWebsite = Boolean(candidate.website && candidate.website.trim());
   const verStatus: VerificationStatus = hasWebsite ? 'VERIFIED' : 'UNVERIFIED';
@@ -235,11 +426,8 @@ function generateFallbackQualification(
   if (candidate.description?.toLowerCase().includes('in-house') || candidate.description?.toLowerCase().includes('turnkey')) {
     flags.push('⚠️ Company claims in-house/turnkey execution — verify whether specialist/overflow work is outsourced.');
   }
-  if (!hasWebsite) {
-    flags.push('⚠️ Website/company identity could not be fully verified.');
-  } else {
-    flags.push(`⚠️ Investigate whether ${candidate.companyType} handles execution internally or via external specialist partners.`);
-  }
+  flags.push(`⚠️ Investigate whether ${candidate.companyType} handles glass/metal execution internally or via external specialist partners.`);
+  flags.push(`⚠️ Clarify vendor decision ownership: does design team specify architectural glass, or does client/PMC procure?`);
 
   return {
     name: candidate.name,
@@ -248,7 +436,7 @@ function generateFallbackQualification(
     priority,
     verificationStatus: verStatus,
     verificationReason: verReason,
-    partnerModelSignals: ['Turnkey execution claimed', 'Regional coverage'],
+    partnerModelSignals: ['Commercial practice operating in Bengaluru'],
     partnerOpportunitySignal: partnerOppSignal,
     partnerOpportunityReason: partnerOppReason,
     evidenceLimitations: evLimitations,
@@ -257,6 +445,7 @@ function generateFallbackQualification(
       geographicRelevance: candidate.location,
       companySize: 'Unverified headcount',
       meavenFit: `Potential fit for ${candidate.companyType}`,
+      otherSignals: `Rule-calculated score: ${fitScore}/100 (ICP: ${icpScore}, Projects: ${projScore}, Recurring: ${recurScore}, Execution: ${execScore}, Glass: ${servScore}, Contact: ${contactScore}, Evidence: ${evidScore})`,
     },
     evidenceList: [
       {

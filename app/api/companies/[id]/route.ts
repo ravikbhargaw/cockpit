@@ -2,9 +2,12 @@ export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { DAL } from '@/lib/db/dal';
 import { db } from '@/lib/db';
-import { getCurrentUserFromRequest } from '@/lib/auth';
+import { requireAuth } from '@/lib/session';
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const { id } = params;
     const accountData = await DAL.getCompanyById(id);
@@ -21,14 +24,17 @@ export async function GET(request: Request, { params }: { params: { id: string }
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+  const currentUser = auth.user;
+
   try {
     const { id } = params;
     const body = await request.json();
     if (body.owner !== undefined) {
-      const currentUser = await getCurrentUserFromRequest(request);
       const existing = await db.prepare('SELECT owner FROM relationships WHERE company_id = ?').get(id) as any;
       if (existing && existing.owner !== body.owner) {
-        if (!currentUser || currentUser.role !== 'ADMIN') {
+        if (currentUser.role !== 'ADMIN') {
           return NextResponse.json({ error: 'Forbidden: Only administrators can reassign company owner' }, { status: 403 });
         }
       }
@@ -41,14 +47,17 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+  const currentUser = auth.user;
+
   try {
     const { id } = params;
     const body = await request.json();
     if (body.owner !== undefined) {
-      const currentUser = await getCurrentUserFromRequest(request);
       const existing = await db.prepare('SELECT owner FROM relationships WHERE company_id = ?').get(id) as any;
       if (existing && existing.owner !== body.owner) {
-        if (!currentUser || currentUser.role !== 'ADMIN') {
+        if (currentUser.role !== 'ADMIN') {
           return NextResponse.json({ error: 'Forbidden: Only administrators can reassign company owner' }, { status: 403 });
         }
       }

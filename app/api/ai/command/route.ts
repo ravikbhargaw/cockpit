@@ -1,11 +1,15 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/session';
 
 /**
  * Server-Side AI Command Route Handler
  * Safe server boundary for processing AI queries without exposing API keys to client.
  */
 export async function POST(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const body = await request.json();
     const { prompt } = body;

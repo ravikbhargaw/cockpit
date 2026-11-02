@@ -12,9 +12,12 @@ export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { DAL } from '@/lib/db/dal';
-import { getCurrentUserFromRequest } from '@/lib/auth';
+import { requireAuth } from '@/lib/session';
 
 export async function GET(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search')?.toLowerCase();
@@ -78,8 +81,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+  const currentUser = auth.user;
+
   try {
-    const currentUser = await getCurrentUserFromRequest(request);
 
     const body = await request.json();
     if (!body.name && !body.companyName) {

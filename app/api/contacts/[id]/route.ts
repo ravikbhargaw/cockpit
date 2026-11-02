@@ -1,8 +1,12 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { DAL } from '@/lib/db/dal';
+import { requireAuth } from '@/lib/session';
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const { id } = params;
     const body = await request.json();
@@ -14,6 +18,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const { id } = params;
     const updatedAccount = await DAL.archiveContact(id);
@@ -22,3 +29,4 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     return NextResponse.json({ error: error.message || 'Failed to archive contact' }, { status: 500 });
   }
 }
+

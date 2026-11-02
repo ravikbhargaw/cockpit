@@ -5,7 +5,7 @@
  * Model defaults to gpt-5.6-luna via getActiveResearchModel().
  */
 
-import { getActiveResearchModel } from './pricing';
+import { getActiveResearchModel, validateResearchModel } from './pricing';
 
 export interface OpenAICompletionOptions {
   model?: string;
@@ -31,9 +31,17 @@ export async function callOpenAICompletion<T = any>(
   userPrompt: string,
   options: OpenAICompletionOptions = {}
 ): Promise<OpenAICompletionResult<T>> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model = options.model || getActiveResearchModel();
+  const modelValidation = validateResearchModel(options.model);
+  if (!modelValidation.valid) {
+    return {
+      ok: false,
+      error: modelValidation.error || `Invalid AI model: ${options.model}`,
+      model: modelValidation.model || 'unknown',
+    };
+  }
+  const model = modelValidation.model;
 
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || apiKey.trim() === '' || apiKey === 'your_openai_api_key_here') {
     return {
       ok: false,
@@ -50,8 +58,7 @@ export async function callOpenAICompletion<T = any>(
     ],
   };
 
-  // gpt-5.6-luna only supports default temperature 1. Only include temperature if explicitly set and not gpt-5.6-luna.
-  if (options.temperature !== undefined && options.temperature !== 1 && !model.includes('gpt-5.6') && !model.includes('gpt-5')) {
+  if (options.temperature !== undefined) {
     payload.temperature = options.temperature;
   }
 

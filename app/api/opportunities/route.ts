@@ -3,8 +3,12 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { DAL } from '@/lib/db/dal';
 import { formatINR } from '@/lib/utils';
+import { requireAuth } from '@/lib/session';
 
 export async function GET(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get('companyId');
@@ -48,6 +52,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const body = await request.json();
     if (!body.companyId || !body.title) {
@@ -62,6 +69,9 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const body = await request.json();
     const { id } = body;
@@ -78,6 +88,9 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

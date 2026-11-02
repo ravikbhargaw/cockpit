@@ -1,8 +1,12 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireAuth } from '@/lib/session';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const rows = await db.prepare('SELECT * FROM settings').all() as any[];
 
@@ -18,6 +22,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const body = await request.json();
 

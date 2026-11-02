@@ -467,7 +467,7 @@ export const DAL = {
     return DAL.mapResearchJobRow(row);
   },
 
-  async mapResearchJobRow(row: any) {
+  mapResearchJobRow(row: any) {
     if (!row) return null;
     let parsedCriteria = {};
     try {
@@ -1339,7 +1339,7 @@ export const DAL = {
     const id = `prt_${now.getTime()}_${Math.random().toString(36).substring(2, 7)}`;
 
     // Invalidate previous unused reset tokens for this user
-    await db.prepare("UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND (used_at IS NULL OR used_at = '')").run(now.toISOString(), userId);
+    await db.prepare("UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL").run(now.toISOString(), userId);
 
     // Insert new token hash
     await db.prepare(`
@@ -1353,7 +1353,7 @@ export const DAL = {
   async validatePasswordResetToken(rawToken: string) {
     if (!rawToken || typeof rawToken !== 'string') return { valid: false, reason: 'invalid' };
     const tokenHash = await hashResetToken(rawToken);
-    const row = await db.prepare("SELECT * FROM password_reset_tokens WHERE token_hash = ? AND (used_at IS NULL OR used_at = '')").get(tokenHash) as any;
+    const row = await db.prepare("SELECT * FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL").get(tokenHash) as any;
     if (!row) return { valid: false, reason: 'invalid' };
 
     const now = new Date();

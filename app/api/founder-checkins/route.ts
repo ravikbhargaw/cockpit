@@ -1,14 +1,19 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { DAL } from '@/lib/db/dal';
+import { requireAuth } from '@/lib/session';
+import { getISTDateString } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date');
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getISTDateString();
     const targetDate = dateParam || todayStr;
 
     const [checkin, stats, history] = await Promise.all([
@@ -33,39 +38,14 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    const { date, workCompleted, salesCompleted, bodyCompleted, sleepCompleted } = body;
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
 
-    if (!date || typeof date !== 'string') {
-      return NextResponse.json({ error: 'Valid date (YYYY-MM-DD) is required' }, { status: 400 });
-    }
-
-    const updatedCheckin = await DAL.upsertFounderCheckin({
-      date,
-      workCompleted: Boolean(workCompleted),
-      salesCompleted: Boolean(salesCompleted),
-      bodyCompleted: Boolean(bodyCompleted),
-      sleepCompleted: Boolean(sleepCompleted),
-    });
-
-    const todayStr = new Date().toISOString().split('T')[0];
-    const [stats, history] = await Promise.all([
-      DAL.getFounderStats(todayStr),
-      DAL.getFounderHistory(),
-    ]);
-
-    return NextResponse.json({
-      success: true,
-      checkin: updatedCheckin,
-      stats,
-      history,
-    });
-  } catch (error: any) {
-    console.error('Error saving 180-Day Founder check-in:', error);
-    return NextResponse.json(
-      { error: error?.message || 'Failed to save founder check-in' },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json(
+    {
+      retired: true,
+      message: 'The 180-Day Founder feature has been retired. Historical records are preserved in the database.',
+    },
+    { status: 410 }
+  );
 }

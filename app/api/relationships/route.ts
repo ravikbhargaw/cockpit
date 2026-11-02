@@ -12,9 +12,12 @@ export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { DAL } from '@/lib/db/dal';
-import { getCurrentUserFromRequest } from '@/lib/auth';
+import { requireAuth } from '@/lib/session';
 
 export async function GET(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get('companyId');
@@ -53,6 +56,9 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const body = await request.json();
     const { companyId, owner } = body;
@@ -62,7 +68,7 @@ export async function PUT(request: Request) {
     }
 
     if (owner !== undefined) {
-      const currentUser = await getCurrentUserFromRequest(request);
+      const currentUser = auth.user;
       const existing = await db.prepare('SELECT owner FROM relationships WHERE company_id = ?').get(companyId) as any;
       if (existing && existing.owner !== owner) {
         if (!currentUser || currentUser.role !== 'ADMIN') {
@@ -79,6 +85,9 @@ export async function PUT(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const body = await request.json();
     const { companyId, owner } = body;
@@ -88,7 +97,7 @@ export async function PATCH(request: Request) {
     }
 
     if (owner !== undefined) {
-      const currentUser = await getCurrentUserFromRequest(request);
+      const currentUser = auth.user;
       const existing = await db.prepare('SELECT owner FROM relationships WHERE company_id = ?').get(companyId) as any;
       if (existing && existing.owner !== owner) {
         if (!currentUser || currentUser.role !== 'ADMIN') {

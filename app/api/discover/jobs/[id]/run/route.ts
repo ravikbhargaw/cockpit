@@ -6,11 +6,15 @@ import { qualifyCandidate } from '@/lib/ai/qualifier';
 import { calculateEstimatedCost } from '@/lib/ai/pricing';
 import { normalizeDomain } from '@/lib/utils';
 import { ParsedCriteria } from '@/types';
+import { requireAuth } from '@/lib/session';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireAuth(req);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const jobId = params.id;
     const job = await DAL.getResearchJobById(jobId);
@@ -34,21 +38,38 @@ export async function POST(
 
     totalPromptTokens += discoveryRes.usage?.promptTokens || 0;
     totalCompletionTokens += discoveryRes.usage?.completionTokens || 0;
-    totalSearchCalls += discoveryRes.searchCalls || 1;
+    totalSearchCalls += discoveryRes.searchCalls || 0;
 
-    let costCheck = calculateEstimatedCost(totalPromptTokens, totalCompletionTokens, totalSearchCalls, job.modelName, job.budgetLimit);
-
-    if (costCheck.isBudgetExceeded) {
-      await DAL.updateResearchJobMetrics(jobId, {
-        status: 'READY_FOR_REVIEW',
-        statusMessage: `Safety budget ceiling reached (₹${costCheck.costINR}). Discovery completed.`,
-        estimatedCost: costCheck.costINR,
-        searchCallCount: totalSearchCalls,
-      });
-      return NextResponse.json({ success: true, job: await DAL.getResearchJobById(jobId), candidates: [] });
+    // Check if discovery actually succeeded — DO NOT swallow discovery failure!
+    if (!discoveryRes.ok) {
+      const errMsg = discoveryRes.error || 'Web discovery failed to find candidates or encountered an error.';
+      await DAL.updateResearchJobStatus(jobId, 'FAILED', errMsg);
+      return NextResponse.json(
+        { success: false, error: errMsg, job: await DAL.getResearchJobById(jobId) },
+        { status: 500 }
+      );
     }
 
     const rawCandidates = discoveryRes.candidates || [];
+
+    // If web discovery legitimately returned 0 candidates
+    if (rawCandidates.length === 0) {
+      const finalCost = calculateEstimatedCost(totalPromptTokens, totalCompletionTokens, totalSearchCalls, job.modelName, job.budgetLimit);
+      await DAL.updateResearchJobMetrics(jobId, {
+        candidateCount: 0,
+        qualifiedCount: 0,
+        finalShortlistCount: 0,
+        estimatedCost: finalCost.costINR,
+        searchCallCount: totalSearchCalls,
+        status: 'READY_FOR_REVIEW',
+        statusMessage: 'Web discovery completed: 0 candidates found matching the criteria. Try broadening search terms.',
+      });
+      return NextResponse.json({
+        success: true,
+        job: await DAL.getResearchJobById(jobId),
+        candidates: [],
+      });
+    }
 
     // 2. Stage: FILTERING (Deduplicate against existing DB companies & candidates)
     await DAL.updateResearchJobStatus(jobId, 'FILTERING', `Deduplicating ${rawCandidates.length} discovered candidates against database...`);
@@ -79,14 +100,34 @@ export async function POST(
       return true;
     });
 
+    // If all discovered candidates were already in DB
+    if (filteredCandidates.length === 0) {
+      const finalCost = calculateEstimatedCost(totalPromptTokens, totalCompletionTokens, totalSearchCalls, job.modelName, job.budgetLimit);
+      await DAL.updateResearchJobMetrics(jobId, {
+        candidateCount: rawCandidates.length,
+        qualifiedCount: 0,
+        finalShortlistCount: 0,
+        estimatedCost: finalCost.costINR,
+        searchCallCount: totalSearchCalls,
+        status: 'READY_FOR_REVIEW',
+        statusMessage: `Discovery completed: All ${rawCandidates.length} discovered candidates are already present in your database or previously reviewed.`,
+      });
+      return NextResponse.json({
+        success: true,
+        job: await DAL.getResearchJobById(jobId),
+        candidates: [],
+      });
+    }
+
     // 3. Stage: QUALIFYING
     await DAL.updateResearchJobStatus(jobId, 'QUALIFYING', `Qualifying ${filteredCandidates.length} fresh candidates...`);
 
     const qualifiedList: any[] = [];
+    let qualificationErrors: string[] = [];
 
     for (const rawCand of filteredCandidates) {
       // Check budget guard ceiling before each qualification call
-      costCheck = calculateEstimatedCost(totalPromptTokens, totalCompletionTokens, totalSearchCalls, job.modelName, job.budgetLimit);
+      let costCheck = calculateEstimatedCost(totalPromptTokens, totalCompletionTokens, totalSearchCalls, job.modelName, job.budgetLimit);
       if (costCheck.isBudgetExceeded) {
         break; // Pause qualification gracefully
       }
@@ -95,6 +136,11 @@ export async function POST(
 
       totalPromptTokens += qualRes.usage?.promptTokens || 0;
       totalCompletionTokens += qualRes.usage?.completionTokens || 0;
+
+      if (!qualRes.ok) {
+        qualificationErrors.push(qualRes.error || 'Qualification error');
+        continue;
+      }
 
       if (qualRes.ok && qualRes.result) {
         const q = qualRes.result;
@@ -125,6 +171,16 @@ export async function POST(
           qualificationStatus: 'Qualified',
         });
       }
+    }
+
+    // If qualification completely failed due to invalid model / API error
+    if (filteredCandidates.length > 0 && qualifiedList.length === 0 && qualificationErrors.length > 0) {
+      const errMsg = `AI qualification failed: ${qualificationErrors[0]}`;
+      await DAL.updateResearchJobStatus(jobId, 'FAILED', errMsg);
+      return NextResponse.json(
+        { success: false, error: errMsg, job: await DAL.getResearchJobById(jobId) },
+        { status: 500 }
+      );
     }
 
     // 4. Save candidates into DB

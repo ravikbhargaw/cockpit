@@ -1,15 +1,15 @@
 /**
  * Centralized Model & Pricing Architecture for AI Research Engine
  * 
- * Default Model: gpt-5.6-luna
- * Pricing for gpt-5.6-luna:
- * - Input: $0.20 / 1M tokens
- * - Output: $1.20 / 1M tokens
+ * Default Model: gpt-4o-mini
+ * Pricing for gpt-4o-mini:
+ * - Input: $0.15 / 1M tokens
+ * - Output: $0.60 / 1M tokens
  * 
  * Configurable via process.env.RESEARCH_AI_MODEL and process.env.USD_TO_INR_RATE
  */
 
-export const DEFAULT_RESEARCH_MODEL = process.env.RESEARCH_AI_MODEL || 'gpt-5.6-luna';
+export const DEFAULT_RESEARCH_MODEL = 'gpt-4o-mini';
 
 /**
  * Maximum safety budget in INR per Research Job.
@@ -24,21 +24,21 @@ export interface ModelPricing {
 }
 
 export const MODEL_PRICING_TABLE: Record<string, ModelPricing> = {
-  'gpt-5.6-luna': {
-    inputPer1MUSD: 0.20,
-    outputPer1MUSD: 1.20,
+  'gpt-4o-mini': {
+    inputPer1MUSD: 0.15,
+    outputPer1MUSD: 0.60,
   },
   'gpt-4o': {
     inputPer1MUSD: 2.50,
     outputPer1MUSD: 10.00,
   },
-  'gpt-4o-mini': {
-    inputPer1MUSD: 0.15,
-    outputPer1MUSD: 0.60,
+  'gpt-4-turbo': {
+    inputPer1MUSD: 10.00,
+    outputPer1MUSD: 30.00,
   },
 };
 
-export const SEARCH_CALL_COST_USD = 0.01; // Estimated cost per web search call
+export const SEARCH_CALL_COST_USD = 0.005; // Estimated cost per web search query
 
 export function getExchangeRateUSDToINR(): number {
   const envRate = process.env.USD_TO_INR_RATE;
@@ -51,13 +51,52 @@ export function getExchangeRateUSDToINR(): number {
   return 85.0; // Default exchange rate
 }
 
+/**
+ * Validates whether a model string is a genuine, supported OpenAI model.
+ * Fails clearly if an invalid or hallucinated model (e.g. gpt-5.6-luna) is configured.
+ */
+export function validateResearchModel(modelName?: string): { valid: boolean; model: string; error?: string } {
+  const envModel = process.env.RESEARCH_AI_MODEL;
+  const target = (modelName || envModel || DEFAULT_RESEARCH_MODEL).trim();
+
+  if (!target) {
+    return { valid: false, model: '', error: 'Research AI model name is empty.' };
+  }
+
+  const clean = target.toLowerCase();
+  // Check for known invalid/fabricated model names
+  if (clean.includes('luna') || clean.includes('gpt-5.6') || clean.includes('fake')) {
+    return {
+      valid: false,
+      model: target,
+      error: `Invalid AI model configured: "${target}". Please configure a valid OpenAI model such as 'gpt-4o-mini' or 'gpt-4o' in RESEARCH_AI_MODEL.`,
+    };
+  }
+
+  // Must match valid OpenAI prefix
+  if (!clean.startsWith('gpt-4') && !clean.startsWith('gpt-3.5') && !clean.startsWith('o1') && !clean.startsWith('o3')) {
+    return {
+      valid: false,
+      model: target,
+      error: `Unsupported OpenAI model: "${target}". Expected 'gpt-4o-mini', 'gpt-4o', or a standard OpenAI chat completion model.`,
+    };
+  }
+
+  return { valid: true, model: target };
+}
+
 export function getActiveResearchModel(): string {
-  return process.env.RESEARCH_AI_MODEL || DEFAULT_RESEARCH_MODEL;
+  const validation = validateResearchModel();
+  if (!validation.valid) {
+    // Return the invalid model so caller / validator can report the exact misconfiguration
+    return validation.model || DEFAULT_RESEARCH_MODEL;
+  }
+  return validation.model;
 }
 
 export function getModelPricing(modelName?: string): ModelPricing {
   const model = modelName || getActiveResearchModel();
-  return MODEL_PRICING_TABLE[model] || MODEL_PRICING_TABLE['gpt-5.6-luna'];
+  return MODEL_PRICING_TABLE[model] || MODEL_PRICING_TABLE['gpt-4o-mini'];
 }
 
 export interface CostCalculationResult {

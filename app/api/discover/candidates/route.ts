@@ -1,10 +1,14 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { DAL } from '@/lib/db/dal';
+import { requireAuth } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
+  const auth = await requireAuth(req);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status') || 'All';
@@ -20,6 +24,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireAuth(req);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
     const body = await req.json();
     if (!body.companyName && !body.name) {

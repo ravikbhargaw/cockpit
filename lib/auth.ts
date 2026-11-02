@@ -136,6 +136,31 @@ export async function verifyPassword(inputPassword: string, storedHash?: string 
 }
 
 /**
+ * Verifies submitted password for a registered database user.
+ * 1. If user has a password_hash set, verifies strictly via PBKDF2 hash.
+ * 2. If user has no password_hash (initial bootstrap state before reset),
+ *    allows transitional authentication using COCKPIT_PASSWORD for that registered user.
+ * 3. An unregistered or null user is NEVER verified.
+ */
+export async function verifyUserCredentials(
+  inputPassword: string,
+  user: { passwordHash?: string | null; password_hash?: string | null } | null | undefined
+): Promise<boolean> {
+  if (!inputPassword || !user) return false;
+
+  const hash = user.passwordHash || user.password_hash;
+  if (hash && hash.trim().length > 0) {
+    return await verifyPasswordHash(inputPassword, hash);
+  }
+
+  // Transitional bootstrap mechanism ONLY for registered users without a personal hash
+  if (!isAuthConfigured()) return false;
+  const expectedPassword = process.env.COCKPIT_PASSWORD;
+  if (!expectedPassword || expectedPassword.trim().length === 0) return false;
+  return inputPassword === expectedPassword;
+}
+
+/**
  * Creates a signed session token including timestamp, userId, and sessionVersion.
  * Token format: timestamp.userId.sessionVersion.signature
  */
@@ -149,8 +174,9 @@ export async function createSessionToken(userId: string = 'usr-1', sessionVersio
 }
 
 /**
- * Verifies a signed session token.
- * 100% Edge-compatible HMAC signature check and 7-day expiration check.
+ * Fast Edge-compatible HMAC signature check and 7-day expiration check.
+ * Strictly requires 4-part tokens (timestamp.userId.version.signature).
+ * Legacy 2-part tokens without session versioning fail closed.
  */
 export async function verifySessionToken(token: string | null | undefined): Promise<boolean> {
   if (!token || typeof token !== 'string') return false;
@@ -159,25 +185,12 @@ export async function verifySessionToken(token: string | null | undefined): Prom
   const secret = process.env.COCKPIT_SESSION_SECRET!;
   const parts = token.split('.');
 
-  // Legacy 2-part tokens (timestamp.signature)
-  if (parts.length === 2) {
-    const [timestampStr, providedSignature] = parts;
-    const timestamp = parseInt(timestampStr, 10);
-    if (isNaN(timestamp)) return false;
-
-    const maxAgeMs = 7 * 24 * 60 * 60 * 1000;
-    if (Date.now() - timestamp > maxAgeMs) return false;
-
-    const expectedSignature = await hmacSign(timestampStr, secret);
-    return providedSignature === expectedSignature;
-  }
-
   // 4-part tokens (timestamp.userId.version.signature)
   if (parts.length === 4) {
     const [timestampStr, userId, versionStr, providedSignature] = parts;
     const timestamp = parseInt(timestampStr, 10);
     const tokenVersion = parseInt(versionStr, 10);
-    if (isNaN(timestamp) || isNaN(tokenVersion)) return false;
+    if (isNaN(timestamp) || isNaN(tokenVersion) || !userId) return false;
 
     const maxAgeMs = 7 * 24 * 60 * 60 * 1000;
     if (Date.now() - timestamp > maxAgeMs) return false;
@@ -187,6 +200,7 @@ export async function verifySessionToken(token: string | null | undefined): Prom
     return providedSignature === expectedSignature;
   }
 
+  // All other formats (including legacy 2-part tokens) fail closed
   return false;
 }
 
@@ -197,36 +211,3 @@ export interface CurrentUser {
   role: 'ADMIN' | 'USER';
 }
 
-/**
- * Resolves authenticated user identity from request session token.
- */
-export async function getCurrentUserFromRequest(request: Request): Promise<CurrentUser | null> {
-  const cookieHeader = request.headers.get('cookie') || '';
-  const cookies = Object.fromEntries(
-    cookieHeader.split(';').map((c) => {
-      const [k, ...v] = c.trim().split('=');
-      return [k, v.join('=')];
-    })
-  );
-  const token = cookies[COOKIE_NAME];
-  const isValid = await verifySessionToken(token);
-  if (!isValid) return null;
-
-  let userId = 'usr-1';
-  if (token && token.split('.').length === 4) {
-    userId = token.split('.')[1];
-  }
-
-  const roleHeader = request.headers.get('x-user-role');
-  const role = roleHeader === 'USER' || roleHeader === 'ADMIN' ? roleHeader : (userId === 'usr-2' ? 'USER' : 'ADMIN');
-
-  const userHeader = request.headers.get('x-user-name');
-  const name = userHeader || (role === 'USER' ? 'Associate User' : 'Ravi');
-
-  return {
-    id: userId,
-    name,
-    email: role === 'USER' ? 'associate@meaven.in' : 'ravi@meaven.in',
-    role: role as 'ADMIN' | 'USER',
-  };
-}

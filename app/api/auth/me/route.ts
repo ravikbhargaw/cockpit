@@ -1,19 +1,17 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { COOKIE_NAME, verifySessionToken } from '@/lib/auth';
+import { requireAuth } from '@/lib/session';
 
-export async function GET() {
-  const cookieStore = cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
-  const isAuthenticated = await verifySessionToken(token);
+export const dynamic = 'force-dynamic';
 
-  if (!isAuthenticated) {
-    return NextResponse.json({ authenticated: false }, { status: 401 });
+export async function GET(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) {
+    return auth.errorResponse;
   }
 
   return NextResponse.json({
     authenticated: true,
-    user: { name: 'Ravi', role: 'Founder & CEO' },
+    user: auth.user,
   });
 }

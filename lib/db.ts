@@ -27,6 +27,39 @@ async function neonFetch(connectionString: string, query: string, params: any[])
   };
 }
 
+// Local SQLite bridge fetch for Next.js Edge Runtime in development.
+const SQLITE_BRIDGE_PORT = process.env.SQLITE_BRIDGE_PORT || '3919';
+const SQLITE_BRIDGE_URL = `http://127.0.0.1:${SQLITE_BRIDGE_PORT}/sql`;
+
+async function localSqliteFetch(query: string, params: any[], action?: string): Promise<{ rows: any[]; rowCount: number }> {
+  try {
+    const response = await fetch(SQLITE_BRIDGE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query, params, action }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`SQLite bridge returned HTTP ${response.status}: ${text}`);
+    }
+
+    const result = (await response.json()) as any;
+    if (result.error) {
+      throw new Error(result.error);
+    }
+    return {
+      rows: result.rows || [],
+      rowCount: result.rowCount ?? result.rows?.length ?? 0,
+    };
+  } catch (err: any) {
+    console.error('[lib/db.ts] Local SQLite bridge error:', err);
+    throw new Error(`Database error: Local SQLite bridge unavailable at ${SQLITE_BRIDGE_URL} (${err.message}). Ensure local development server is running.`);
+  }
+}
+
 let dbInstance: any = null;
 
 function getDB() {
@@ -51,7 +84,7 @@ function getDB() {
               return result.rows;
             } catch (err) {
               console.error('PostgreSQL query error (all):', err);
-              return [];
+              throw err;
             }
           },
           async get(...params: any[]) {
@@ -60,7 +93,7 @@ function getDB() {
               return result.rows[0] || null;
             } catch (err) {
               console.error('PostgreSQL query error (get):', err);
-              return null;
+              throw err;
             }
           },
           async run(...params: any[]) {
@@ -69,7 +102,7 @@ function getDB() {
               return { changes: result.rowCount || 1 };
             } catch (err: any) {
               console.error('PostgreSQL query error (run):', err);
-              throw err; // Re-throw so callers know the update failed
+              throw err;
             }
           },
         };
@@ -84,57 +117,92 @@ function getDB() {
     return dbInstance;
   }
 
-  // Only attempt SQLite when DATABASE_URL is not set (local dev only).
-  // On Cloudflare Edge Workers, DATABASE_URL is always set (PostgreSQL).
-  // eval('require') crashes the Cloudflare bundler, so we must never reach this code in production.
+  // Local development with SQLite (when DATABASE_URL is not set)
   if (!process.env.DATABASE_URL) {
-    if (dbInstance && dbInstance._isSqlite) return dbInstance;
+    // 1. Direct Node.js runtime (acceptance tests, scripts, tsx CLI)
+    const isEdge = process.env.NEXT_RUNTIME === 'edge' || (typeof (globalThis as any).EdgeRuntime === 'string');
 
-    try {
-      const req = eval('require');
-      const path = req('path');
-      const fs = req('fs');
-      const Database = req('better-sqlite3');
-      const dbPath = path.join(process.cwd(), 'data', 'cockpit.db');
-      const dataDir = path.dirname(dbPath);
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+    if (!isEdge) {
+      if (dbInstance && dbInstance._isSqlite) return dbInstance;
+
+      try {
+        const req = eval('require');
+        const path = req('path');
+        const fs = req('fs');
+        const Database = req('better-sqlite3');
+        const dbPath = path.join(process.cwd(), 'data', 'cockpit.db');
+        const dataDir = path.dirname(dbPath);
+        if (!fs.existsSync(dataDir)) {
+          fs.mkdirSync(dataDir, { recursive: true });
+        }
+        const sqliteDb = new Database(dbPath);
+        sqliteDb.pragma('journal_mode = WAL');
+        sqliteDb.pragma('foreign_keys = ON');
+
+        const cleanParams = (params: any[]) =>
+          params.map((p) => (p === undefined ? null : p));
+
+        dbInstance = {
+          _isSqlite: true,
+          prepare(sql: string) {
+            const cleanSql = sql.replace(/\bILIKE\b/gi, 'LIKE');
+            const stmt = sqliteDb.prepare(cleanSql);
+            return {
+              async all(...params: any[]) { return stmt.all(...cleanParams(params)); },
+              async get(...params: any[]) { return stmt.get(...cleanParams(params)); },
+              async run(...params: any[]) {
+                const res = stmt.run(...cleanParams(params));
+                return { changes: res.changes };
+              },
+            };
+          },
+          exec(sql: string) { sqliteDb.exec(sql); },
+          pragma(sql: string) { sqliteDb.pragma(sql); },
+        };
+        return dbInstance;
+      } catch (err: any) {
+        console.error('Failed to initialize local SQLite driver in Node runtime:', err);
+        throw new Error(`Failed to initialize local SQLite driver: ${err.message}`);
       }
-      const sqliteDb = new Database(dbPath);
-      sqliteDb.pragma('journal_mode = WAL');
-      sqliteDb.pragma('foreign_keys = ON');
-
-      dbInstance = {
-        _isSqlite: true,
-        prepare(sql: string) {
-          const stmt = sqliteDb.prepare(sql);
-          return {
-            async all(...params: any[]) { return stmt.all(...params); },
-            async get(...params: any[]) { return stmt.get(...params); },
-            async run(...params: any[]) { return stmt.run(...params); },
-          };
-        },
-        exec(sql: string) { sqliteDb.exec(sql); },
-        pragma(sql: string) { sqliteDb.pragma(sql); },
-      };
-      return dbInstance;
-    } catch (err) {
-      // ignore
     }
+
+    // 2. Next.js Edge isolate runtime in local development:
+    // Route query through local SQLite HTTP bridge
+    if (dbInstance && dbInstance._isSqliteBridge) return dbInstance;
+
+    dbInstance = {
+      _isSqliteBridge: true,
+      prepare(sql: string) {
+        return {
+          async all(...params: any[]) {
+            const result = await localSqliteFetch(sql, params);
+            return result.rows;
+          },
+          async get(...params: any[]) {
+            const result = await localSqliteFetch(sql, params);
+            return result.rows[0] || null;
+          },
+          async run(...params: any[]) {
+            const result = await localSqliteFetch(sql, params);
+            return { changes: result.rowCount };
+          },
+        };
+      },
+      exec(sql: string) {
+        localSqliteFetch(sql, [], 'exec').catch((err) =>
+          console.error('[lib/db.ts] SQLite bridge exec error:', err)
+        );
+      },
+      pragma(sql: string) {
+        localSqliteFetch(`PRAGMA ${sql}`, []).catch((err) =>
+          console.error('[lib/db.ts] SQLite bridge pragma error:', err)
+        );
+      },
+    };
+    return dbInstance;
   }
 
-  // Fallback dummy driver (used at build time or if SQLite fails)
-  return {
-    prepare(sql: string) {
-      return {
-        all: async () => [],
-        get: async () => null,
-        run: async () => ({ changes: 0 }),
-      };
-    },
-    exec: () => {},
-    pragma: () => {},
-  };
+  throw new Error('Database error: No database configured. Set DATABASE_URL or run in local development mode.');
 }
 
 export interface DatabaseClient {
@@ -456,7 +524,7 @@ export async function initDB() {
       if (userCount === 0) {
         const now = new Date().toISOString();
         const stmt = db.prepare('INSERT INTO users (id, name, email, role, session_version, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)');
-        await stmt.run('usr-1', 'Ravi', 'ravi@meaven.in', 'ADMIN', now, now);
+        await stmt.run('usr-1', 'Ravi', 'ravi.bhargaw@meaven.in', 'ADMIN', now, now);
         await stmt.run('usr-2', 'Associate User', 'associate@meaven.in', 'USER', now, now);
       }
     } catch {}

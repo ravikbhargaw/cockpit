@@ -1,14 +1,14 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { DAL } from '@/lib/db/dal';
-import { getCurrentUserFromRequest } from '@/lib/auth';
+import { requireAuth } from '@/lib/session';
 
 export async function GET(request: Request) {
+  const auth = await requireAuth(request);
+  if (auth.errorResponse) return auth.errorResponse;
+
   try {
-    const currentUser = await getCurrentUserFromRequest(request);
-    if (!currentUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const currentUser = auth.user;
     const users = await DAL.getUsers();
     return NextResponse.json({ users, currentUser });
   } catch (error: any) {

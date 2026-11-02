@@ -1,6 +1,6 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
-import { COOKIE_NAME, verifyPassword, createSessionToken, isAuthConfigured } from '@/lib/auth';
+import { COOKIE_NAME, verifyUserCredentials, createSessionToken, isAuthConfigured } from '@/lib/auth';
 import { DAL } from '@/lib/db/dal';
 
 export const dynamic = 'force-dynamic';
@@ -17,22 +17,44 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { password, email } = body;
 
-    // Check user record by email (defaults to Ravi admin)
-    const userEmail = email && typeof email === 'string' ? email.trim() : 'ravi@meaven.in';
-    const user = await DAL.getUserByEmail(userEmail);
-
-    const storedHash = user?.passwordHash;
-    const isValid = await verifyPassword(password, storedHash);
-
-    if (!password || !isValid) {
+    if (!email || typeof email !== 'string' || !email.trim()) {
       return NextResponse.json(
-        { error: 'Invalid password. Access denied.' },
+        { error: 'Email and password are required.' },
+        { status: 400 }
+      );
+    }
+
+    if (!password || typeof password !== 'string') {
+      return NextResponse.json(
+        { error: 'Email and password are required.' },
+        { status: 400 }
+      );
+    }
+
+    // 1. Authoritative Database User Lookup
+    const cleanEmail = email.trim().toLowerCase();
+    const user = await DAL.getUserByEmail(cleanEmail);
+
+    // CRITICAL: Unknown email must always fail closed
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Invalid email or password. Access denied.' },
         { status: 401 }
       );
     }
 
-    const userId = user?.id || 'usr-1';
-    const sessionVersion = user?.sessionVersion || 1;
+    // 2. Validate Password Credential for this specific registered user
+    const isValid = await verifyUserCredentials(password, user);
+    if (!isValid) {
+      return NextResponse.json(
+        { error: 'Invalid email or password. Access denied.' },
+        { status: 401 }
+      );
+    }
+
+    // 3. Issue Session Token with trusted User ID and Session Version
+    const userId = user.id;
+    const sessionVersion = user.sessionVersion || 1;
     const sessionToken = await createSessionToken(userId, sessionVersion);
 
     if (!sessionToken) {
@@ -45,10 +67,10 @@ export async function POST(request: Request) {
     const response = NextResponse.json({
       success: true,
       user: {
-        id: userId,
-        name: user?.name || 'Ravi',
-        email: user?.email || 'ravi@meaven.in',
-        role: user?.role || 'ADMIN',
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role, // Authoritative role from trusted database
       },
     });
 
