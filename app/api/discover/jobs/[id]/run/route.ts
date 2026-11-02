@@ -15,9 +15,14 @@ export async function POST(
   const auth = await requireAuth(req);
   if (auth.errorResponse) return auth.errorResponse;
 
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+  let totalSearchCalls = 0;
+  let job: any = null;
+
   try {
     const jobId = params.id;
-    const job = await DAL.getResearchJobById(jobId);
+    job = await DAL.getResearchJobById(jobId);
 
     if (!job) {
       return NextResponse.json(
@@ -25,10 +30,6 @@ export async function POST(
         { status: 404 }
       );
     }
-
-    let totalPromptTokens = 0;
-    let totalCompletionTokens = 0;
-    let totalSearchCalls = 0;
 
     // 1. Stage: DISCOVERING
     await DAL.updateResearchJobStatus(jobId, 'DISCOVERING', 'Searching public web & industry registries for candidates...');
@@ -43,6 +44,13 @@ export async function POST(
     // Check if discovery actually succeeded — DO NOT swallow discovery failure!
     if (!discoveryRes.ok) {
       const errMsg = discoveryRes.error || 'Web discovery failed to find candidates or encountered an error.';
+      const failedCost = calculateEstimatedCost(totalPromptTokens, totalCompletionTokens, totalSearchCalls, job.modelName, job.budgetLimit);
+      await DAL.updateResearchJobMetrics(jobId, {
+        estimatedCost: failedCost.costINR,
+        searchCallCount: totalSearchCalls,
+        status: 'FAILED',
+        statusMessage: errMsg,
+      });
       await DAL.updateResearchJobStatus(jobId, 'FAILED', errMsg);
       return NextResponse.json(
         { success: false, error: errMsg, job: await DAL.getResearchJobById(jobId) },
@@ -176,6 +184,16 @@ export async function POST(
     // If qualification completely failed due to invalid model / API error
     if (filteredCandidates.length > 0 && qualifiedList.length === 0 && qualificationErrors.length > 0) {
       const errMsg = `AI qualification failed: ${qualificationErrors[0]}`;
+      const failedCost = calculateEstimatedCost(totalPromptTokens, totalCompletionTokens, totalSearchCalls, job.modelName, job.budgetLimit);
+      await DAL.updateResearchJobMetrics(jobId, {
+        candidateCount: rawCandidates.length,
+        qualifiedCount: 0,
+        finalShortlistCount: 0,
+        estimatedCost: failedCost.costINR,
+        searchCallCount: totalSearchCalls,
+        status: 'FAILED',
+        statusMessage: errMsg,
+      });
       await DAL.updateResearchJobStatus(jobId, 'FAILED', errMsg);
       return NextResponse.json(
         { success: false, error: errMsg, job: await DAL.getResearchJobById(jobId) },
@@ -212,6 +230,15 @@ export async function POST(
       candidates: savedCandidates,
     });
   } catch (error: any) {
+    try {
+      const failedCost = calculateEstimatedCost(totalPromptTokens, totalCompletionTokens, totalSearchCalls, job?.modelName, job?.budgetLimit);
+      await DAL.updateResearchJobMetrics(params.id, {
+        estimatedCost: failedCost.costINR,
+        searchCallCount: totalSearchCalls,
+        status: 'FAILED',
+        statusMessage: `Job execution error: ${error.message}`,
+      });
+    } catch {}
     await DAL.updateResearchJobStatus(params.id, 'FAILED', `Job execution error: ${error.message}`);
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to execute research job' },

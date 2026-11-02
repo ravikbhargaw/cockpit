@@ -268,7 +268,13 @@ export async function searchOpenAIWeb(query: string, maxResults: number): Promis
   try {
     const payload = {
       model,
-      input: `Search the web for: "${query}". Identify real, established companies, architecture practices, interior design studios, or commercial fitout firms matching the search. Return their official company website URLs, firm names, and portfolio summaries. Prioritize direct company websites over aggregator directory links.`,
+      input: `Search the web for real, established Bangalore architecture firms, interior design studios, commercial interior designers and fitout companies matching: "${query}".
+For each firm you identify, return their canonical official company website URL (e.g., https://firmname.com or https://firmname.in) along with firm name and summary.
+CRITICAL REQUIREMENTS:
+- Prioritize direct official company homepages and portfolio websites.
+- Explicitly DO NOT return or cite Google Maps URLs, Google search URLs, directory pages (e.g. Justdial, Sulekha, IndiaMART), social media pages (e.g. LinkedIn, Instagram, Facebook), or search aggregator links.
+- Provide direct markdown links in your response text to their actual company homepages: [Firm Name](https://officialdomain.com).
+- If you find a firm name through local results, perform a search to locate their actual official company domain and link directly to that website.`,
       tools: [{ type: 'web_search' }],
     };
 
@@ -542,6 +548,10 @@ function filterAndDeduplicateResults(items: SearchResultItem[]): SearchResultIte
   ]);
 
   for (const item of items) {
+    if (item.url && (item.url.includes('/maps/') || item.url.includes('google.com/maps') || item.url.includes('maps.google'))) {
+      continue;
+    }
+
     const dom = normalizeDomain(item.domain || item.url);
     if (!dom) continue;
     if (excludedDomains.has(dom)) continue;

@@ -19,6 +19,22 @@ const STAGES: { key: ResearchJobStatus; label: string }[] = [
   { key: 'READY_FOR_REVIEW', label: '5. Ready for Review' },
 ];
 
+function hasValidCriteria(criteria: any): boolean {
+  if (!criteria) return false;
+  if (typeof criteria === 'object') {
+    return Object.keys(criteria).length > 0;
+  }
+  if (typeof criteria === 'string' && criteria.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(criteria);
+      return typeof parsed === 'object' && parsed !== null && Object.keys(parsed).length > 0;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 export default function JobProgressBanner({
   jobId,
   onJobComplete,
@@ -77,8 +93,16 @@ export default function JobProgressBanner({
       case 'READY_FOR_REVIEW':
       case 'COMPLETED': return 4;
       case 'FAILED': {
-        // Accurately determine the stage where the failure occurred
-        if (!jobData?.parsedCriteria || Object.keys(jobData.parsedCriteria).length === 0) return 0;
+        const msg = (jobData?.statusMessage || '').toLowerCase();
+        const isDiscoveryFailure =
+          msg.includes('web discovery') ||
+          msg.includes('search') ||
+          msg.includes('zero results') ||
+          msg.includes('candidate extraction') ||
+          msg.includes('network connectivity');
+
+        if (isDiscoveryFailure) return 1;
+        if (!hasValidCriteria(jobData?.parsedCriteria)) return 0;
         if (!jobData?.candidateCount || jobData.candidateCount === 0) return 1;
         if (!jobData?.qualifiedCount || jobData.qualifiedCount === 0) return 3;
         return 1;
@@ -104,7 +128,7 @@ export default function JobProgressBanner({
       if (job.status === 'PLANNING') {
         state = 'ACTIVE';
         subtext = 'Planning criteria';
-      } else if (job.parsedCriteria && Object.keys(job.parsedCriteria).length > 0) {
+      } else if (hasValidCriteria(job.parsedCriteria) || (isFailed && currentIndex > 0)) {
         state = 'SUCCESS';
         subtext = 'Criteria planned';
       } else if (isFailed && currentIndex === 0) {
