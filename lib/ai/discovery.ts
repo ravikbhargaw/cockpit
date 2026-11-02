@@ -7,6 +7,7 @@
 
 import { callOpenAICompletion } from './openai';
 import { searchWeb, SearchResultItem } from './search';
+import { calculateEstimatedCost } from './pricing';
 import { normalizeDomain } from '@/lib/utils';
 import { ParsedCriteria } from '@/types';
 
@@ -88,6 +89,12 @@ export async function discoverCandidates(
   const seenUrls = new Set<string>();
 
   for (const q of allQueries) {
+    const costCheck = calculateEstimatedCost(0, 0, searchCalls);
+    if (costCheck.isBudgetExceeded) {
+      console.warn(`Discover budget limit reached before search query "${q}". Halting additional queries.`);
+      break;
+    }
+
     try {
       searchCalls++;
       const res = await searchWeb(q, 10);

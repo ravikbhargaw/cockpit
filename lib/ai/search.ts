@@ -26,6 +26,11 @@ export interface WebSearchResponse {
   query: string;
   results: SearchResultItem[];
   error?: string;
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
 }
 
 /**
@@ -43,7 +48,7 @@ export async function searchWeb(query: string, maxResults: number = 10): Promise
       const res = await searchSerper(cleanQuery, maxResults);
       if (res.ok && res.results.length > 0) return res;
     } catch (err: any) {
-      console.warn('Serper search failed, falling back to DuckDuckGo:', err?.message);
+      console.warn('Serper search failed, falling back to next provider:', err?.message);
     }
   }
 
@@ -52,7 +57,7 @@ export async function searchWeb(query: string, maxResults: number = 10): Promise
       const res = await searchTavily(cleanQuery, maxResults);
       if (res.ok && res.results.length > 0) return res;
     } catch (err: any) {
-      console.warn('Tavily search failed, falling back to DuckDuckGo:', err?.message);
+      console.warn('Tavily search failed, falling back to next provider:', err?.message);
     }
   }
 
@@ -61,7 +66,7 @@ export async function searchWeb(query: string, maxResults: number = 10): Promise
       const res = await searchBrave(cleanQuery, maxResults);
       if (res.ok && res.results.length > 0) return res;
     } catch (err: any) {
-      console.warn('Brave search failed, falling back to DuckDuckGo:', err?.message);
+      console.warn('Brave search failed, falling back to next provider:', err?.message);
     }
   }
 
@@ -70,11 +75,28 @@ export async function searchWeb(query: string, maxResults: number = 10): Promise
       const res = await searchSerpApi(cleanQuery, maxResults);
       if (res.ok && res.results.length > 0) return res;
     } catch (err: any) {
-      console.warn('SerpAPI search failed, falling back to DuckDuckGo:', err?.message);
+      console.warn('SerpAPI search failed, falling back to next provider:', err?.message);
     }
   }
 
-  // Default provider: DuckDuckGo HTML search (no API key required)
+  // Primary production fallback: OpenAI Native Web Search via Responses API (uses existing OPENAI_API_KEY)
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey && openaiKey.trim() !== '' && openaiKey !== 'your_openai_api_key_here') {
+    try {
+      const res = await searchOpenAIWeb(cleanQuery, maxResults);
+      return res;
+    } catch (err: any) {
+      return {
+        ok: false,
+        provider: 'openai_web_search',
+        query: cleanQuery,
+        results: [],
+        error: `OpenAI native web search failed: ${err?.message}`,
+      };
+    }
+  }
+
+  // Local development / zero-key fallback: DuckDuckGo HTML search
   return searchDuckDuckGo(cleanQuery, maxResults);
 }
 
@@ -225,6 +247,164 @@ async function searchSerpApi(query: string, maxResults: number): Promise<WebSear
 }
 
 /**
+ * Provider: OpenAI Native Web Search via Responses API (v1/responses)
+ * Leverages the existing OPENAI_API_KEY without requiring external search provider secrets.
+ * Natively supported in Cloudflare Pages / Edge Workers via standard fetch.
+ */
+export async function searchOpenAIWeb(query: string, maxResults: number): Promise<WebSearchResponse> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || apiKey.trim() === '' || apiKey === 'your_openai_api_key_here') {
+    return {
+      ok: false,
+      provider: 'openai_web_search',
+      query,
+      results: [],
+      error: 'OPENAI_API_KEY is not configured for web search.',
+    };
+  }
+
+  const model = process.env.RESEARCH_AI_MODEL?.trim() || 'gpt-4o-mini';
+
+  try {
+    const payload = {
+      model,
+      input: `Search the web for: "${query}". Identify real, established companies, architecture practices, interior design studios, or commercial fitout firms matching the search. Return their official company website URLs, firm names, and portfolio summaries. Prioritize direct company websites over aggregator directory links.`,
+      tools: [{ type: 'web_search' }],
+    };
+
+    const res = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey.trim()}`,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(25000),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return {
+        ok: false,
+        provider: 'openai_web_search',
+        query,
+        results: [],
+        error: `OpenAI Responses API returned HTTP ${res.status}: ${errText.substring(0, 300)}`,
+      };
+    }
+
+    const data = await res.json();
+    const items: SearchResultItem[] = [];
+
+    // Extract citations from message output content annotations
+    const outputList = Array.isArray(data.output) ? data.output : [];
+    const msg = outputList.find((o: any) => o.type === 'message');
+    const contentList = Array.isArray(msg?.content) ? msg.content : [];
+
+    for (const c of contentList) {
+      if (c.type === 'output_text') {
+        const text = typeof c.text === 'string' ? c.text : '';
+        const annotations = Array.isArray(c.annotations) ? c.annotations : [];
+
+        // 1. Process structured url_citation annotations
+        for (const ann of annotations) {
+          if (ann.type === 'url_citation' && ann.url) {
+            let targetUrl = ann.url;
+            try {
+              const u = new URL(targetUrl);
+              u.searchParams.delete('utm_source');
+              targetUrl = u.toString();
+            } catch {}
+
+            const domain = normalizeDomain(targetUrl) || '';
+            const title = ann.title || domain;
+
+            let snippet = '';
+            if (typeof ann.start_index === 'number' && typeof ann.end_index === 'number') {
+              const start = Math.max(0, ann.start_index - 80);
+              const end = Math.min(text.length, ann.end_index + 160);
+              snippet = text.substring(start, end).replace(/\n+/g, ' ').trim();
+            } else {
+              snippet = title;
+            }
+
+            items.push({
+              title,
+              url: targetUrl,
+              snippet,
+              domain,
+            });
+          }
+        }
+
+        // 2. Process markdown links in output_text: [Title](https://...)
+        const mdLinkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g;
+        let match;
+        while ((match = mdLinkRegex.exec(text)) !== null) {
+          let linkTitle = match[1].trim();
+          let linkUrl = match[2].trim();
+          try {
+            const u = new URL(linkUrl);
+            u.searchParams.delete('utm_source');
+            linkUrl = u.toString();
+          } catch {}
+
+          const domain = normalizeDomain(linkUrl);
+          if (domain && !items.some(it => it.url === linkUrl)) {
+            const matchIndex = match.index;
+            const snipStart = Math.max(0, matchIndex - 50);
+            const snipEnd = Math.min(text.length, matchIndex + match[0].length + 150);
+            const snip = text.substring(snipStart, snipEnd).replace(/\n+/g, ' ').trim();
+
+            items.push({
+              title: linkTitle,
+              url: linkUrl,
+              snippet: snip,
+              domain,
+            });
+          }
+        }
+      }
+    }
+
+    const filtered = filterAndDeduplicateResults(items).slice(0, maxResults);
+
+    const usage = {
+      promptTokens: data.usage?.input_tokens || 0,
+      completionTokens: data.usage?.output_tokens || 0,
+      totalTokens: data.usage?.total_tokens || 0,
+    };
+
+    if (filtered.length === 0) {
+      return {
+        ok: false,
+        provider: 'openai_web_search',
+        query,
+        results: [],
+        usage,
+        error: 'OpenAI web search completed but returned zero valid web candidate citations.',
+      };
+    }
+
+    return {
+      ok: true,
+      provider: 'openai_web_search',
+      query,
+      results: filtered,
+      usage,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      provider: 'openai_web_search',
+      query,
+      results: [],
+      error: `OpenAI web search call failed: ${err.message}`,
+    };
+  }
+}
+
+/**
  * Provider: DuckDuckGo HTML Search (Built-in Zero-Config Fallback)
  * Fetches HTML from DuckDuckGo and parses organic results directly.
  */
@@ -309,6 +489,16 @@ async function searchDuckDuckGo(query: string, maxResults: number): Promise<WebS
     }
 
     const filtered = filterAndDeduplicateResults(items).slice(0, maxResults);
+
+    if (filtered.length === 0) {
+      return {
+        ok: false,
+        provider: 'duckduckgo',
+        query,
+        results: [],
+        error: 'DuckDuckGo returned 0 results or anti-bot challenge page.',
+      };
+    }
 
     return {
       ok: true,

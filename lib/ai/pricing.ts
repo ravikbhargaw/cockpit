@@ -38,7 +38,7 @@ export const MODEL_PRICING_TABLE: Record<string, ModelPricing> = {
   },
 };
 
-export const SEARCH_CALL_COST_USD = 0.005; // Estimated cost per web search query
+export const SEARCH_CALL_COST_USD = 0.01; // Cost per web search call ($0.01 for OpenAI Native Web Search: $10 / 1,000 calls)
 
 export function getExchangeRateUSDToINR(): number {
   const envRate = process.env.USD_TO_INR_RATE;

@@ -67,7 +67,7 @@ export default function JobProgressBanner({
 
   if (!job) return null;
 
-  const getStageIndex = (status: ResearchJobStatus) => {
+  const getStageIndex = (status: ResearchJobStatus, jobData?: ResearchJob | null) => {
     switch (status) {
       case 'PLANNING': return 0;
       case 'DISCOVERING': return 1;
@@ -76,11 +76,18 @@ export default function JobProgressBanner({
       case 'DEEP_RESEARCH': return 3;
       case 'READY_FOR_REVIEW':
       case 'COMPLETED': return 4;
+      case 'FAILED': {
+        // Accurately determine the stage where the failure occurred
+        if (!jobData?.parsedCriteria || Object.keys(jobData.parsedCriteria).length === 0) return 0;
+        if (!jobData?.candidateCount || jobData.candidateCount === 0) return 1;
+        if (!jobData?.qualifiedCount || jobData.qualifiedCount === 0) return 3;
+        return 1;
+      }
       default: return 0;
     }
   };
 
-  const currentIndex = getStageIndex(job.status);
+  const currentIndex = getStageIndex(job.status, job);
   const isFinished = job.status === 'READY_FOR_REVIEW' || job.status === 'COMPLETED';
   const isFailed = job.status === 'FAILED';
   const candidateCount = job.candidateCount || 0;
@@ -97,12 +104,12 @@ export default function JobProgressBanner({
       if (job.status === 'PLANNING') {
         state = 'ACTIVE';
         subtext = 'Planning criteria';
-      } else if (isFailed && currentIndex === 0) {
-        state = 'FAILED';
-        subtext = 'Planning failed';
       } else if (job.parsedCriteria && Object.keys(job.parsedCriteria).length > 0) {
         state = 'SUCCESS';
         subtext = 'Criteria planned';
+      } else if (isFailed && currentIndex === 0) {
+        state = 'FAILED';
+        subtext = 'Planning failed';
       }
     } else if (idx === 1) {
       // 2. Web Discovery
